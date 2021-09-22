@@ -1,4 +1,4 @@
-module ioring
+module github.com/godzie44/go-uring
 
 go 1.17
 
