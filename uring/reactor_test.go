@@ -1,4 +1,4 @@
-package ioring
+package uring
 
 import (
 	"context"
@@ -15,7 +15,7 @@ func TestReactorExecuteReadVCommand(t *testing.T) {
 	assert.NoError(t, err)
 	defer r.Close()
 
-	f, err := os.Open("go.mod")
+	f, err := os.Open("../go.mod")
 	assert.NoError(t, err)
 	defer f.Close()
 	cmd, err := ReadV(f, 16)
@@ -37,7 +37,7 @@ func TestReactorExecuteReadVCommand(t *testing.T) {
 	case res := <-reactor.Result():
 		assert.NoError(t, res.Error())
 		reads := res.Command().(*ReadVCommand)
-		expected, err := ioutil.ReadFile("go.mod")
+		expected, err := ioutil.ReadFile("../go.mod")
 		assert.NoError(t, err)
 
 		str := string(unsafe.Slice(reads.IOVecs[0].Base, reads.Size))

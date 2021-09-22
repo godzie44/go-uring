@@ -1,4 +1,4 @@
-package ioring
+package uring
 
 import (
 	"golang.org/x/sys/unix"

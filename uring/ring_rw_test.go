@@ -1,4 +1,4 @@
-package ioring
+package uring
 
 import (
 	"github.com/stretchr/testify/assert"
@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-const readFileName = "go.mod"
+const readFileName = "../go.mod"
 
 func TestSingleReadV(t *testing.T) {
 	r, err := NewRing(8)
