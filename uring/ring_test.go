@@ -21,7 +21,9 @@ func readyCnt(r *URing) uint32 {
 
 func queueNOPs(r *URing, count int) (err error) {
 	for i := 0; i < count; i++ {
-		err = r.FillNextSQE(Nop().fillSQE)
+		nop := Nop()
+		nop.SetUserData(uint64(i + offset))
+		err = r.FillNextSQE(nop.fillSQE)
 		if err != nil {
 			return err
 		}
@@ -36,28 +38,28 @@ func TestCQRingReady(t *testing.T) {
 	assert.NoError(t, err)
 	defer ring.Close()
 
-	assert.Equal(t, uint32(0), readyCnt(ring))
+	assert.Equal(t, uint32(0), ring.cqRing.readyCount())
 
-	assert.NoError(t, queueNOPs(ring, 4))
-	assert.Equal(t, uint32(4), readyCnt(ring))
+	assert.NoError(t, queueNOPs(ring, 4, 0))
+	assert.Equal(t, uint32(4), ring.cqRing.readyCount())
 	ring.AdvanceCQ(4)
 
-	assert.Equal(t, uint32(0), readyCnt(ring))
+	assert.Equal(t, uint32(0), ring.cqRing.readyCount())
 
-	assert.NoError(t, queueNOPs(ring, 4))
-	assert.Equal(t, uint32(4), readyCnt(ring))
+	assert.NoError(t, queueNOPs(ring, 4, 0))
+	assert.Equal(t, uint32(4), ring.cqRing.readyCount())
 
 	ring.AdvanceCQ(1)
 
-	assert.Equal(t, uint32(3), readyCnt(ring))
+	assert.Equal(t, uint32(3), ring.cqRing.readyCount())
 
 	ring.AdvanceCQ(2)
 
-	assert.Equal(t, uint32(1), readyCnt(ring))
+	assert.Equal(t, uint32(1), ring.cqRing.readyCount())
 
 	ring.AdvanceCQ(1)
 
-	assert.Equal(t, uint32(0), readyCnt(ring))
+	assert.Equal(t, uint32(0), ring.cqRing.readyCount())
 }
 
 //TestCQRingFull test cq ring overflow.
@@ -66,9 +68,9 @@ func TestCQRingFull(t *testing.T) {
 	assert.NoError(t, err)
 	defer ring.Close()
 
-	assert.NoError(t, queueNOPs(ring, 4))
-	assert.NoError(t, queueNOPs(ring, 4))
-	assert.NoError(t, queueNOPs(ring, 4))
+	assert.NoError(t, queueNOPs(ring, 4, 0))
+	assert.NoError(t, queueNOPs(ring, 4, 0))
+	assert.NoError(t, queueNOPs(ring, 4, 0))
 
 	i := 0
 	for {
@@ -106,23 +108,6 @@ func TestCQRingSize(t *testing.T) {
 	assert.Error(t, err, "zero sized cq ring succeeded")
 	assert.NoError(t, ring.Close())
 }
-
-// static int fill_nops(struct io_uring *ring)
-//{
-//	struct io_uring_sqe *sqe;
-//	int filled = 0;
-//
-//	do {
-//		sqe = io_uring_get_sqe(ring);
-//		if (!sqe)
-//			break;
-//
-//		io_uring_prep_nop(sqe);
-//		filled++;
-//	} while (1);
-//
-//	return filled;
-//}
 
 func fillNOPs(r *URing) (filled int) {
 	for {
@@ -167,4 +152,24 @@ func TestRingNopAllSizes(t *testing.T) {
 		assert.NoError(t, ring.Close())
 		depth <<= 1
 	}
+}
+
+//TestRingProbe test IORING_REGISTER_PROBE
+func TestRingProbe(t *testing.T) {
+	ring, err := NewRing(4)
+	assert.NoError(t, err)
+	defer ring.Close()
+
+	probe, err := ring.Probe()
+	if err == syscall.EINVAL {
+		t.Skip("Skipped, probe not supported")
+	}
+	assert.NoError(t, err)
+
+	assert.NotEqual(t, 0, probe.lastOp)
+	assert.NotEqual(t, 0, probe.ops)
+
+	assert.NotEqual(t, 0, probe.GetOP(int(opNop)).Flags&uint16(IO_URING_OP_SUPPORTED), "NOP not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(opReadV)).Flags&uint16(IO_URING_OP_SUPPORTED), "READV not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(opWriteV)).Flags&uint16(IO_URING_OP_SUPPORTED), "WRITEV not supported")
 }

@@ -35,6 +35,13 @@ const (
 	IORING_ENTER_GETEVENTS uint32 = 1 << 0
 )
 
+// io_uring_register(2) opcodes and arguments
+const (
+	IO_URING_OP_SUPPORTED uint32 = 1 << 0
+
+	IORING_REGISTER_PROBE = 8
+)
+
 const (
 	libUserDataTimeout = math.MaxUint64
 )
@@ -67,6 +74,19 @@ func sysSetup(entries uint32, params *ringParams) (int, error) {
 	}
 
 	return int(fd), nil
+}
+
+func sysRegisterProbe(ringFD int, probe *Probe, len int) error {
+	_, _, errno := syscall.Syscall6(
+		SYS_IO_URING_REGISTER,
+		uintptr(ringFD),
+		uintptr(IORING_REGISTER_PROBE),
+		uintptr(unsafe.Pointer(probe)),
+		uintptr(len),
+		0,
+		0,
+	)
+	return errno
 }
 
 type SQEntry struct {
