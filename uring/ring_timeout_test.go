@@ -2,6 +2,7 @@ package uring
 
 import (
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"runtime"
 	"syscall"
 	"testing"
@@ -11,17 +12,17 @@ import (
 //TestSingleTimeout test single timeout command.
 func TestSingleTimeout(t *testing.T) {
 	r, err := NewRing(8)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer r.Close()
 
-	assert.NoError(t, r.FillNextSQE(Timeout(time.Second).fillSQE))
+	require.NoError(t, r.FillNextSQE(Timeout(time.Second).fillSQE))
 
 	submitTime := time.Now()
 	_, err = r.Submit()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cqe, err := r.WaitCQEvents(1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, syscall.ETIME, cqe.Error())
 
 	assert.True(t, time.Now().Sub(submitTime) > time.Second)
@@ -30,20 +31,20 @@ func TestSingleTimeout(t *testing.T) {
 //TestMultipleTimeout test multiple timeouts command.
 func TestMultipleTimeout(t *testing.T) {
 	r, err := NewRing(8)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer r.Close()
 
 	twoSecTimeout := Timeout(2 * time.Second)
 	twoSecTimeout.SetUserData(1)
-	assert.NoError(t, r.FillNextSQE(twoSecTimeout.fillSQE))
+	require.NoError(t, r.FillNextSQE(twoSecTimeout.fillSQE))
 
 	oneSecTimeout := Timeout(time.Second)
 	oneSecTimeout.SetUserData(2)
-	assert.NoError(t, r.FillNextSQE(oneSecTimeout.fillSQE))
+	require.NoError(t, r.FillNextSQE(oneSecTimeout.fillSQE))
 
 	submitTime := time.Now()
 	_, err = r.Submit()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	i := 0
 ENDTEST:
@@ -54,7 +55,7 @@ ENDTEST:
 			continue
 		}
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		switch i {
 		case 0:
@@ -74,11 +75,11 @@ ENDTEST:
 //TestSingleTimeoutWait test wait cq event with timeout function.
 func TestSingleTimeoutWait(t *testing.T) {
 	r, err := NewRing(8)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer r.Close()
 
-	assert.NoError(t, r.FillNextSQE(Nop().fillSQE))
-	assert.NoError(t, r.FillNextSQE(Nop().fillSQE))
+	require.NoError(t, r.FillNextSQE(Nop().fillSQE))
+	require.NoError(t, r.FillNextSQE(Nop().fillSQE))
 
 	var i = 0
 	for {
@@ -91,10 +92,10 @@ func TestSingleTimeoutWait(t *testing.T) {
 			continue
 		}
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		r.SeenCQE(cqe)
 
-		assert.NoError(t, cqe.Error())
+		require.NoError(t, cqe.Error())
 		i++
 	}
 
