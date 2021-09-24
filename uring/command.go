@@ -144,23 +144,3 @@ func (cmd *TimeoutCommand) fillSQE(sqe *SQEntry) {
 	sqe.fill(opTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
 	sqe.setUserData(cmd.userData)
 }
-
-//AcceptCommand accept command.
-type AcceptCommand struct {
-	baseCommand
-	fd    int
-	flags uint32
-}
-
-//Accept - accept operation.
-func Accept(fd int, flags uint32) *AcceptCommand {
-	return &AcceptCommand{
-		fd:    fd,
-		flags: flags,
-	}
-}
-
-func (cmd *AcceptCommand) fillSQE(sqe *SQEntry) {
-	sqe.fill(opAccept, int32(cmd.fd), 0, 0, 0)
-	sqe.opcodeFlags = cmd.flags
-}
