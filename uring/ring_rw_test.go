@@ -73,7 +73,7 @@ func TestSingleWriteV(t *testing.T) {
 	assert.NoError(t, err)
 	defer ring.Close()
 
-	const testFileName = "./tests/tmp/single_writev.txt"
+	const testFileName = "/tmp/single_writev.txt"
 
 	f, err := os.Create(testFileName)
 	assert.NoError(t, err)
