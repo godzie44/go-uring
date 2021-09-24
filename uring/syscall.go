@@ -8,17 +8,9 @@ import (
 )
 
 const (
-	SYS_IO_URING_SETUP    uintptr = 425
-	SYS_IO_URING_ENTER    uintptr = 426
-	SYS_IO_URING_REGISTER uintptr = 427
-
-	IORING_SETUP_CQSIZE uint32 = 1 << 3 /* app defines CQ size */
-
-	IORING_FEAT_SINGLE_MMAP uint32 = 1 << 0
-	IORING_FEAT_NODROP      uint32 = 1 << 1
-
-	IORING_OFF_CQ_RING uint64 = 0x8000000
-	IORING_OFF_SQES    uint64 = 0x10000000
+	sysRingSetup    uintptr = 425
+	sysRingEnter    uintptr = 426
+	sysRingRegister uintptr = 427
 
 	//copied from signal_unix.numSig
 	numSig = 65
@@ -26,20 +18,20 @@ const (
 
 // sqRing ring flags
 const (
-	IORING_SQ_NEED_WAKEUP uint32 = 1 << 0 // needs io_uring_enter wakeup
-	IORING_SQ_CQ_OVERFLOW uint32 = 1 << 1 // cq ring is overflown
+	sqNeedWakeup uint32 = 1 << 0 // needs io_uring_enter wakeup
+	sqCQOverflow uint32 = 1 << 1 // cq ring is overflown
 )
 
-// flags
+// io_uring_enter flags
 const (
-	IORING_ENTER_GETEVENTS uint32 = 1 << 0
+	sysRingEnterGetEvents uint32 = 1 << 0
 )
 
 // io_uring_register(2) opcodes and arguments
 const (
-	IO_URING_OP_SUPPORTED uint32 = 1 << 0
+	opSupported uint32 = 1 << 0
 
-	IORING_REGISTER_PROBE = 8
+	sysRingRegisterProbe = 8
 )
 
 const (
@@ -52,7 +44,7 @@ func sysEnter(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, sig
 
 func sysEnter2(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, sig *unix.Sigset_t, sz int) (uint, error) {
 	consumed, _, errno := syscall.Syscall6(
-		SYS_IO_URING_ENTER,
+		sysRingEnter,
 		uintptr(ringFD),
 		uintptr(toSubmit),
 		uintptr(minComplete),
@@ -68,7 +60,7 @@ func sysEnter2(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, si
 }
 
 func sysSetup(entries uint32, params *ringParams) (int, error) {
-	fd, _, errno := syscall.Syscall(SYS_IO_URING_SETUP, uintptr(entries), uintptr(unsafe.Pointer(params)), 0)
+	fd, _, errno := syscall.Syscall(sysRingSetup, uintptr(entries), uintptr(unsafe.Pointer(params)), 0)
 	if errno != 0 {
 		return int(fd), errno
 	}
@@ -78,9 +70,9 @@ func sysSetup(entries uint32, params *ringParams) (int, error) {
 
 func sysRegisterProbe(ringFD int, probe *Probe, len int) error {
 	_, _, errno := syscall.Syscall6(
-		SYS_IO_URING_REGISTER,
+		sysRingRegister,
 		uintptr(ringFD),
-		uintptr(IORING_REGISTER_PROBE),
+		uintptr(sysRingRegisterProbe),
 		uintptr(unsafe.Pointer(probe)),
 		uintptr(len),
 		0,
@@ -114,7 +106,6 @@ func (sqe *SQEntry) fill(op opcode, fd int32, addr uintptr, len uint32, offset u
 	sqe.fd = fd
 	sqe.off = offset
 	setAddr(sqe, addr)
-	//sqe.addr = uint64(addr)
 	sqe.len = len
 	sqe.opcodeFlags = 0
 	sqe.userData = 0

@@ -25,7 +25,7 @@ type sq struct {
 }
 
 func (s *sq) cqNeedFlush() bool {
-	return atomic.LoadUint32(s.kFlags)&IORING_SQ_CQ_OVERFLOW != 0
+	return atomic.LoadUint32(s.kFlags)&sqCQOverflow != 0
 }
 
 type cq struct {
@@ -63,12 +63,16 @@ type URingOption func(params *ringParams)
 
 func WithCQSize(sz uint32) URingOption {
 	return func(params *ringParams) {
-		params.flags = params.flags | IORING_SETUP_CQSIZE
+		params.flags = params.flags | setupCQSize
 		params.cqEntries = sz
 	}
 }
 
 func NewRing(entries uint32, opts ...URingOption) (*URing, error) {
+	if entries > MaxEntries {
+		return nil, ErrRingSetup
+	}
+
 	params := ringParams{}
 
 	for _, opt := range opts {
@@ -168,7 +172,7 @@ func (r *URing) getCQEvents(submit, count uint32) (cqe *CQEvent, err error) {
 		}
 
 		if count > available || cqOverflowFlush {
-			flags = IORING_ENTER_GETEVENTS
+			flags = sysRingEnterGetEvents
 			needEnter = true
 		}
 

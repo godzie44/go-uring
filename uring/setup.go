@@ -15,10 +15,10 @@ type (
 		features     uint32
 		wqFD         uint32
 		resv         [3]uint32
-		sqOffset     sqRingOffset
-		cqOffset     cqRingOffset
+		sqOffset     sqRingParams
+		cqOffset     cqRingParams
 	}
-	sqRingOffset struct {
+	sqRingParams struct {
 		head        uint32
 		tail        uint32
 		ringMask    uint32
@@ -29,7 +29,7 @@ type (
 		resv1       uint32
 		resv2       uint64
 	}
-	cqRingOffset struct {
+	cqRingParams struct {
 		head        uint32
 		tail        uint32
 		ringMsk     uint32
@@ -42,12 +42,25 @@ type (
 	}
 )
 
+const (
+	setupCQSize uint32 = 1 << 3 /* app defines CQ size */
+
+	cqRingOffset uint64 = 0x8000000
+	sqesOffset   uint64 = 0x10000000
+)
+
+//feature flags flags
+const (
+	featSingleMMap uint32 = 1 << 0
+	featNoDrop     uint32 = 1 << 1
+)
+
 func (p *ringParams) CanFeatSingleMMap() bool {
-	return p.features&IORING_FEAT_SINGLE_MMAP != 0
+	return p.features&featSingleMMap != 0
 }
 
 func (p *ringParams) FeatNoDrop() bool {
-	return p.features&IORING_FEAT_NODROP != 0
+	return p.features&featNoDrop != 0
 }
 
 func (r *URing) allocRing(params *ringParams) error {
@@ -70,7 +83,7 @@ func (r *URing) allocRing(params *ringParams) error {
 	if params.CanFeatSingleMMap() {
 		r.cqRing.buff = r.sqRing.buff
 	} else {
-		data, err = syscall.Mmap(r.fd, int64(IORING_OFF_CQ_RING), int(r.cqRing.ringSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_POPULATE)
+		data, err = syscall.Mmap(r.fd, int64(cqRingOffset), int(r.cqRing.ringSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_POPULATE)
 		if err != nil {
 			_ = r.freeRing()
 			return err
@@ -88,7 +101,7 @@ func (r *URing) allocRing(params *ringParams) error {
 	r.sqRing.kArray = (*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(ringStart)) + uintptr(params.sqOffset.array)))
 
 	sz := uintptr(params.sqEntries) * unsafe.Sizeof(SQEntry{})
-	buff, err := syscall.Mmap(r.fd, int64(IORING_OFF_SQES), int(sz), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_POPULATE)
+	buff, err := syscall.Mmap(r.fd, int64(sqesOffset), int(sz), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_POPULATE)
 	if err != nil {
 		_ = r.freeRing()
 		return err
