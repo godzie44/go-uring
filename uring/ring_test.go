@@ -2,7 +2,6 @@ package uring
 
 import (
 	"github.com/stretchr/testify/assert"
-	"sync/atomic"
 	"syscall"
 	"testing"
 )
@@ -15,11 +14,7 @@ func TestCreateRing(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func readyCnt(r *URing) uint32 {
-	return atomic.LoadUint32(r.cqRing.kTail) - atomic.LoadUint32(r.cqRing.kHead)
-}
-
-func queueNOPs(r *URing, count int) (err error) {
+func queueNOPs(r *URing, count int, offset int) (err error) {
 	for i := 0; i < count; i++ {
 		nop := Nop()
 		nop.SetUserData(uint64(i + offset))
@@ -169,7 +164,36 @@ func TestRingProbe(t *testing.T) {
 	assert.NotEqual(t, 0, probe.lastOp)
 	assert.NotEqual(t, 0, probe.ops)
 
-	assert.NotEqual(t, 0, probe.GetOP(int(opNop)).Flags&uint16(IO_URING_OP_SUPPORTED), "NOP not supported")
-	assert.NotEqual(t, 0, probe.GetOP(int(opReadV)).Flags&uint16(IO_URING_OP_SUPPORTED), "READV not supported")
-	assert.NotEqual(t, 0, probe.GetOP(int(opWriteV)).Flags&uint16(IO_URING_OP_SUPPORTED), "WRITEV not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(opNop)).Flags&uint16(opSupported), "NOP not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(opReadV)).Flags&uint16(opSupported), "READV not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(opWriteV)).Flags&uint16(opSupported), "WRITEV not supported")
+}
+
+//TestCQPeekBatch test CQ peek-batch.
+func TestCQPeekBatch(t *testing.T) {
+	ring, err := NewRing(4)
+	assert.NoError(t, err)
+	defer ring.Close()
+
+	CQEs := ring.PeekCQEventBatch(4)
+	assert.Len(t, CQEs, 0)
+
+	assert.NoError(t, queueNOPs(ring, 4, 0))
+
+	CQEs = ring.PeekCQEventBatch(4)
+	assert.Len(t, CQEs, 4)
+	for i := 0; i < 4; i++ {
+		assert.Equal(t, uint64(i), CQEs[i].UserData)
+	}
+
+	assert.NoError(t, queueNOPs(ring, 4, 4))
+
+	ring.AdvanceCQ(4)
+	CQEs = ring.PeekCQEventBatch(4)
+	assert.Len(t, CQEs, 4)
+	for i := 0; i < 4; i++ {
+		assert.Equal(t, uint64(i+4), CQEs[i].UserData)
+	}
+
+	ring.AdvanceCQ(4)
 }

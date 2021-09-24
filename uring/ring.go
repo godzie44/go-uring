@@ -40,6 +40,10 @@ type cq struct {
 	cqeBuff      *CQEvent
 }
 
+func (c *cq) readyCount() uint32 {
+	return atomic.LoadUint32(c.kTail) - atomic.LoadUint32(c.kHead)
+}
+
 const MaxEntries uint32 = 1 << 15
 
 type URing struct {
@@ -264,6 +268,37 @@ func (r *URing) peekCQEvent() (uint32, *CQEvent, error) {
 	}
 
 	return available, cqe, err
+}
+
+func (r *URing) peekCQEventBatch(count uint32) (result []*CQEvent) {
+	ready := r.cqRing.readyCount()
+	if ready != 0 {
+		head := atomic.LoadUint32(r.cqRing.kHead)
+		mask := atomic.LoadUint32(r.cqRing.kRingMask)
+
+		if count > ready {
+			count = ready
+		}
+
+		last := head + count
+		result = make([]*CQEvent, 0, last-head)
+		for ; head != last; head++ {
+			result = append(result, (*CQEvent)(unsafe.Add(unsafe.Pointer(r.cqRing.cqeBuff), uintptr(head&mask)*unsafe.Sizeof(CQEvent{}))))
+		}
+	}
+	return result
+}
+
+func (r *URing) PeekCQEventBatch(count uint32) []*CQEvent {
+	result := r.peekCQEventBatch(count)
+	if result == nil {
+		if r.sqRing.cqNeedFlush() {
+			_, _ = sysEnter(r.fd, 0, 0, sysRingEnterGetEvents, nil)
+			result = r.peekCQEventBatch(count)
+		}
+	}
+
+	return result
 }
 
 type probeOp struct {
