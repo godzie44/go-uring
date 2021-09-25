@@ -62,8 +62,6 @@ func NewReactor(ring *URing, opts ...ReactorOption) *Reactor {
 }
 
 func (r *Reactor) Run(ctx context.Context) error {
-	runtime.LockOSThread()
-
 	defer close(r.result)
 
 	for {
@@ -74,9 +72,9 @@ func (r *Reactor) Run(ctx context.Context) error {
 		}
 
 		if err == nil {
-			r.ring.SeenCQE(cqe)
 			r.result <- Result{cmd: r.commands[cqe.UserData], err: cqe.Error()}
 			delete(r.commands, cqe.UserData)
+			r.ring.SeenCQE(cqe)
 		}
 
 		if err != nil && err != syscall.ETIME {
