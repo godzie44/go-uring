@@ -23,16 +23,16 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
-      - name: Test
-        run: go test ./... -p 1
-
-      - name: Calc coverage
-        run: |
-          go test -coverpkg=./... ./... -count=1 -coverprofile=cover.cov.tmp -v
-#          cat cover.cov.tmp | grep -v "main.go" > profile.cov
-      - name: Send coverage
-        env:
-          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          GO111MODULE=off go get github.com/mattn/goveralls
-          $(go env GOPATH)/bin/goveralls -coverprofile=profile.cov -service=github
+#      - name: Test
+#        run: go test ./... -p 1
+#
+#      - name: Calc coverage
+#        run: |
+#          go test -coverpkg=./... ./... -count=1 -coverprofile=cover.cov.tmp -v
+##          cat cover.cov.tmp | grep -v "main.go" > profile.cov
+#      - name: Send coverage
+#        env:
+#          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          GO111MODULE=off go get github.com/mattn/goveralls
+#          $(go env GOPATH)/bin/goveralls -coverprofile=profile.cov -service=github
