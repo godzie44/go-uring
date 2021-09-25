@@ -24,7 +24,7 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Test
-        run: go test ./...
+        run: go test ./... -p 1
 
       - name: Calc coverage
         run: |
