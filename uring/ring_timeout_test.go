@@ -25,7 +25,7 @@ func TestSingleTimeout(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, syscall.ETIME, cqe.Error())
 
-	assert.True(t, time.Now().Sub(submitTime) > time.Second)
+	assert.True(t, time.Since(submitTime) > time.Second)
 }
 
 //TestMultipleTimeout test multiple timeouts command.
@@ -60,11 +60,11 @@ ENDTEST:
 		switch i {
 		case 0:
 			assert.Equal(t, uint64(2), cqe.UserData)
-			assert.True(t, time.Now().Sub(submitTime) > time.Second && time.Now().Sub(submitTime) < 2*time.Second)
+			assert.True(t, time.Since(submitTime) > time.Second && time.Since(submitTime) < 2*time.Second)
 			r.SeenCQE(cqe)
 		case 1:
 			assert.Equal(t, uint64(1), cqe.UserData)
-			assert.True(t, time.Now().Sub(submitTime) > 2*time.Second)
+			assert.True(t, time.Since(submitTime) > 2*time.Second)
 			r.SeenCQE(cqe)
 			break ENDTEST
 		}

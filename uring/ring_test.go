@@ -100,7 +100,7 @@ func TestCQRingSize(t *testing.T) {
 	assert.GreaterOrEqual(t, ring.params.cqEntries, uint32(64))
 	require.NoError(t, ring.Close())
 
-	ring, err = NewRing(4, WithCQSize(0))
+	_, err = NewRing(4, WithCQSize(0))
 	assert.Error(t, err, "zero sized cq ring succeeded")
 }
 
