@@ -6,6 +6,7 @@ import (
 	"net"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func dial(t *testing.T, connChan chan<- net.Conn) {
@@ -95,7 +96,6 @@ func queueSend(ring *URing, fd uintptr, buff []byte) error {
 			Len:  uint64(len(buff)),
 		},
 	}, Offset: 0}
-
 	cmd.SetUserData(1)
 	return ring.FillNextSQE(cmd.fillSQE)
 }
@@ -107,7 +107,56 @@ func queueRecv(ring *URing, fd uintptr, buff []byte) error {
 			Len:  uint64(len(buff)),
 		},
 	}}
-
 	cmd.SetUserData(2)
 	return ring.FillNextSQE(cmd.fillSQE)
+}
+
+func TestAcceptCancel(t *testing.T) {
+	type testCase struct {
+		cancelDelay time.Duration
+	}
+	testCases := []testCase{
+		{0},
+		{time.Microsecond * 10000},
+	}
+
+	for _, tc := range testCases {
+		ring, err := NewRing(32)
+		require.NoError(t, err)
+
+		tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: 8080})
+		require.NoError(t, err)
+
+		acceptCmd := Accept(getBlockingFd(t, tcpListener), 0)
+		acceptCmd.SetUserData(1)
+		require.NoError(t, ring.FillNextSQE(acceptCmd.fillSQE))
+
+		_, err = ring.Submit()
+		require.NoError(t, err)
+
+		if tc.cancelDelay != 0 {
+			time.Sleep(tc.cancelDelay)
+		}
+
+		cancelCmd := Cancel(1, 0)
+		cancelCmd.SetUserData(2)
+		require.NoError(t, ring.FillNextSQE(cancelCmd.fillSQE))
+		_, err = ring.Submit()
+		require.NoError(t, err)
+
+		for i := 0; i < 2; i++ {
+			cqe, err := ring.WaitCQEvents(1)
+			require.NoError(t, err)
+
+			if cqe.UserData == 1 {
+				assert.True(t, cqe.Error() == syscall.EINTR || cqe.Error() == syscall.ECANCELED)
+			} else if cqe.UserData == 2 {
+				assert.True(t, cqe.Error() == syscall.EALREADY || cqe.Error() == nil)
+			}
+			ring.SeenCQE(cqe)
+		}
+
+		require.NoError(t, ring.Close())
+		require.NoError(t, tcpListener.Close())
+	}
 }
