@@ -56,7 +56,6 @@ func (n *NopCommand) fillSQE(sqe *SQEntry) {
 //ReadVCommand vectored read operation, similar to preadv2(2).
 type ReadVCommand struct {
 	baseCommand
-	Name   string
 	FD     uintptr
 	Size   int64
 	IOVecs []syscall.Iovec
@@ -91,7 +90,7 @@ func ReadV(file *os.File, blockSize int64) (*ReadVCommand, error) {
 		bytesRemaining -= bytesToRead
 	}
 
-	return &ReadVCommand{Name: file.Name(), FD: file.Fd(), Size: stat.Size(), IOVecs: buffs}, nil
+	return &ReadVCommand{FD: file.Fd(), Size: stat.Size(), IOVecs: buffs}, nil
 }
 
 func (cmd *ReadVCommand) fillSQE(sqe *SQEntry) {
@@ -102,7 +101,6 @@ func (cmd *ReadVCommand) fillSQE(sqe *SQEntry) {
 //WriteVCommand vectored write operation, similar to pwritev2(2).
 type WriteVCommand struct {
 	baseCommand
-	Name   string
 	FD     uintptr
 	IOVecs []syscall.Iovec
 	Offset uint64
@@ -117,7 +115,7 @@ func WriteV(file *os.File, bytes [][]byte, offset uint64) *WriteVCommand {
 		buffs[i].Base = &bytes[i][0]
 	}
 
-	return &WriteVCommand{Name: file.Name(), FD: file.Fd(), IOVecs: buffs, Offset: offset}
+	return &WriteVCommand{FD: file.Fd(), IOVecs: buffs, Offset: offset}
 }
 
 func (cmd *WriteVCommand) fillSQE(sqe *SQEntry) {
@@ -143,4 +141,24 @@ func (cmd *TimeoutCommand) fillSQE(sqe *SQEntry) {
 	spec := syscall.NsecToTimespec(cmd.dur.Nanoseconds())
 	sqe.fill(opTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
 	sqe.setUserData(cmd.userData)
+}
+
+//AcceptCommand accept command.
+type AcceptCommand struct {
+	baseCommand
+	fd    uintptr
+	flags uint32
+}
+
+//Accept - accept operation.
+func Accept(fd uintptr, flags uint32) *AcceptCommand {
+	return &AcceptCommand{
+		fd:    fd,
+		flags: flags,
+	}
+}
+
+func (cmd *AcceptCommand) fillSQE(sqe *SQEntry) {
+	sqe.fill(opAccept, int32(cmd.fd), 0, 0, 0)
+	sqe.opcodeFlags = cmd.flags
 }

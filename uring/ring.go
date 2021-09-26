@@ -228,6 +228,10 @@ func (r *URing) WaitCQEvents(count uint32) (cqe *CQEvent, err error) {
 	return r.getCQEvents(0, count)
 }
 
+func (r *URing) SubmitAndWaitCQEvents(count uint32) (cqe *CQEvent, err error) {
+	return r.getCQEvents(r.flushSQ(), count)
+}
+
 func (r *URing) PeekCQE() (*CQEvent, error) {
 	return r.WaitCQEvents(0)
 }
