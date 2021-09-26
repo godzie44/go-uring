@@ -25,6 +25,7 @@ const (
 	opTimeout
 	opTimeoutRemove
 	opAccept
+	opAsyncCancel
 )
 
 type baseCommand struct {
@@ -161,4 +162,23 @@ func Accept(fd uintptr, flags uint32) *AcceptCommand {
 func (cmd *AcceptCommand) fillSQE(sqe *SQEntry) {
 	sqe.fill(opAccept, int32(cmd.fd), 0, 0, 0)
 	sqe.opcodeFlags = cmd.flags
+	sqe.setUserData(cmd.userData)
+}
+
+//CancelCommand Attempt  to cancel an already issued request.
+type CancelCommand struct {
+	baseCommand
+	flags          uint32
+	targetUserData uint64
+}
+
+//Cancel create CancelCommand. Put in targetUserData value of user_data field of the request that should be cancelled.
+func Cancel(targetUserData uint64, flags uint32) *CancelCommand {
+	return &CancelCommand{flags: flags, targetUserData: targetUserData}
+}
+
+func (cmd *CancelCommand) fillSQE(sqe *SQEntry) {
+	sqe.fill(opAsyncCancel, int32(-1), uintptr(cmd.targetUserData), 0, 0)
+	sqe.opcodeFlags = cmd.flags
+	sqe.setUserData(cmd.userData)
 }
