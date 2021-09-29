@@ -316,34 +316,29 @@ func (r *URing) PeekCQEventBatch(count uint32) []*CQEvent {
 	return result
 }
 
-type probeOp struct {
-	Op    uint8
-	_res  uint8
-	Flags uint16
-	_res2 uint32
-}
-
-type Probe struct {
-	lastOp uint8
-	opsLen uint8
-	_res   uint16
-	_res2  [3]uint32
-	ops    *probeOp
-}
+type (
+	Probe struct {
+		lastOp uint8
+		opsLen uint8
+		_res   uint16
+		_res2  [3]uint32
+		ops    [256]probeOp
+	}
+	probeOp struct {
+		Op    uint8
+		_res  uint8
+		Flags uint16
+		_res2 uint32
+	}
+)
 
 func (p *Probe) GetOP(n int) *probeOp {
-	return (*probeOp)(unsafe.Add(unsafe.Pointer(p.ops), uintptr(n)*unsafe.Sizeof(probeOp{})))
+	return &p.ops[n]
 }
 
 func (r *URing) Probe() (*Probe, error) {
-	opts := make([]probeOp, 256)
-	//Len := unsafe.Sizeof(Probe{}) + 256 * unsafe.Sizeof(probeOp{})
-	probe := &Probe{
-		ops: &opts[0],
-	}
-
+	probe := &Probe{}
 	err := sysRegisterProbe(r.fd, probe, 256)
-
 	return probe, err
 }
 

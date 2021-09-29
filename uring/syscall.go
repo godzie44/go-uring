@@ -78,7 +78,10 @@ func sysRegisterProbe(ringFD int, probe *Probe, len int) error {
 		0,
 		0,
 	)
-	return errno
+	if errno != 0 {
+		return errno
+	}
+	return nil
 }
 
 type SQEntry struct {
