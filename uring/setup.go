@@ -53,6 +53,7 @@ const (
 const (
 	featSingleMMap uint32 = 1 << 0
 	featNoDrop     uint32 = 1 << 1
+	featFastPoll   uint32 = 1 << 5
 )
 
 func (p *ringParams) CanFeatSingleMMap() bool {
@@ -61,6 +62,10 @@ func (p *ringParams) CanFeatSingleMMap() bool {
 
 func (p *ringParams) FeatNoDrop() bool {
 	return p.features&featNoDrop != 0
+}
+
+func (p *ringParams) FeatFastPoll() bool {
+	return p.features&featFastPoll != 0
 }
 
 func (r *URing) allocRing(params *ringParams) error {

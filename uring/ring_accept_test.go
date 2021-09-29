@@ -1,9 +1,13 @@
 package uring
 
 import (
+	"context"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 	"net"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -16,16 +20,34 @@ func dial(t *testing.T, connChan chan<- net.Conn) {
 	connChan <- c
 }
 
-func getBlockingFd(t *testing.T, conn syscall.Conn) (fdescr uintptr) {
-	raw, err := conn.SyscallConn()
-	require.NoError(t, err)
-	err = raw.Control(func(fd uintptr) {
-		require.NoError(t, syscall.SetNonblock(int(fd), false))
-		fdescr = fd
-	})
-	require.NoError(t, err)
+func makeTCPListener(addr string) (*net.TCPListener, uintptr, error) {
+	var fdescr uintptr
 
-	return fdescr
+	var listenConfig = net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var err error
+			_ = c.Control(func(fd uintptr) {
+				if err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil {
+					return
+				}
+				if err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
+					return
+				}
+				if err = syscall.SetNonblock(int(fd), false); err != nil {
+					return
+				}
+				fdescr = fd
+			})
+			return err
+		},
+	}
+
+	conn, err := listenConfig.Listen(context.Background(), "tcp", addr)
+	if err != nil {
+		return nil, fdescr, err
+	}
+
+	return conn.(*net.TCPListener), fdescr, err
 }
 
 const sendData = "hello world"
@@ -36,10 +58,9 @@ func TestAccept(t *testing.T) {
 	require.NoError(t, err)
 	defer ring.Close()
 
-	tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: 8080})
+	tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
 	require.NoError(t, err)
 	defer tcpListener.Close()
-	listenerFd := getBlockingFd(t, tcpListener)
 
 	clientConnChan := make(chan net.Conn)
 	go dial(t, clientConnChan)
@@ -49,8 +70,10 @@ func TestAccept(t *testing.T) {
 
 	clientConn := <-clientConnChan
 	require.NoError(t, err)
+	clientConnFile, err := clientConn.(*net.TCPConn).File()
+	require.NoError(t, err)
 
-	require.NoError(t, queueSend(ring, getBlockingFd(t, clientConn.(*net.TCPConn)), []byte(sendData)))
+	require.NoError(t, queueSend(ring, clientConnFile.Fd(), []byte(sendData)))
 
 	readBuff := make([]byte, 100)
 	require.NoError(t, queueRecv(ring, connFd, readBuff))
@@ -126,10 +149,10 @@ func TestAcceptCancel(t *testing.T) {
 		ring, err := NewRing(32)
 		require.NoError(t, err)
 
-		tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: 8080})
+		tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
 		require.NoError(t, err)
 
-		acceptCmd := Accept(getBlockingFd(t, tcpListener), 0)
+		acceptCmd := Accept(listenerFd, 0)
 		acceptCmd.SetUserData(1)
 		require.NoError(t, ring.FillNextSQE(acceptCmd.fillSQE))
 
@@ -166,25 +189,26 @@ func TestAcceptCancel(t *testing.T) {
 //Test issue many accepts and see if we handle cancellation on exit
 func TestAcceptMany(t *testing.T) {
 	type testCase struct {
-		count int
-		delay time.Duration
+		count     int
+		delay     time.Duration
+		firstPort int
 	}
 	testCases := []testCase{
-		{1, 0},
-		{1, time.Microsecond * 10000},
+		{count: 128, delay: 0, firstPort: 8090},
+		{count: 128, delay: time.Microsecond * 10000, firstPort: 8090},
 	}
 
-	for n, tc := range testCases {
+	for _, tc := range testCases {
 		ring, err := NewRing(uint32(2 * tc.count))
 		require.NoError(t, err)
 
 		listeners := make([]*net.TCPListener, 0, tc.count)
 		for i := 0; i < tc.count; i++ {
-			tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: 8080 + (n * tc.count) + i})
+			tcpListener, listenerFd, err := makeTCPListener(fmt.Sprintf("0.0.0.0:%d", tc.firstPort+i))
 			require.NoError(t, err)
+
 			listeners = append(listeners, tcpListener)
 
-			listenerFd := getBlockingFd(t, tcpListener)
 			cmd := Accept(listenerFd, 0)
 			err = ring.FillNextSQE(cmd.fillSQE)
 			require.NoError(t, err)
@@ -207,4 +231,101 @@ func TestAcceptMany(t *testing.T) {
 
 		require.NoError(t, ring.Close())
 	}
+}
+
+type linkTestCase struct {
+	doConnect bool
+	timeout   time.Duration
+	expected  [2]error
+}
+
+//TestAcceptLink test accept with linked IORING_OP_LINK_TIMEOUT sqe.
+func TestAcceptLink(t *testing.T) {
+	testCases := []linkTestCase{
+		{doConnect: true, timeout: time.Second, expected: [2]error{nil, syscall.ECANCELED}},
+	}
+
+	ring, err := NewRing(1)
+	require.NoError(t, err)
+
+	if ring.params.FeatFastPoll() {
+		testCases = append(testCases, linkTestCase{doConnect: false, timeout: time.Millisecond * 200, expected: [2]error{syscall.ECANCELED, syscall.ETIME}})
+	} else {
+		testCases = append(testCases, linkTestCase{doConnect: false, timeout: time.Millisecond * 200, expected: [2]error{syscall.EINTR, syscall.EALREADY}})
+	}
+	require.NoError(t, ring.Close())
+
+	for _, tc := range testCases {
+		syncChan := make(chan struct{}, 2)
+
+		wg := &sync.WaitGroup{}
+
+		wg.Add(1)
+		go func(tc linkTestCase) {
+			defer wg.Done()
+			recvG(t, 8080, tc, syncChan)
+		}(tc)
+
+		if tc.doConnect {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sendG(t, 8080, syncChan)
+			}()
+		}
+
+		wg.Wait()
+	}
+}
+
+func recvG(t *testing.T, port int, tc linkTestCase, syncChan chan struct{}) {
+	ring, err := NewRing(8)
+	require.NoError(t, err)
+
+	tcpListener, listenerFd, err := makeTCPListener(fmt.Sprintf("0.0.0.0:%d", port))
+	require.NoError(t, err)
+	defer tcpListener.Close()
+
+	syncChan <- struct{}{}
+
+	acceptCmd := Accept(listenerFd, 0)
+	sqe, err := ring.NextSQE()
+	require.NoError(t, err)
+	acceptCmd.SetUserData(1)
+	acceptCmd.fillSQE(sqe)
+	sqe.flags |= 1 << 2
+
+	timeoutCmd := LinkTimeout(tc.timeout)
+	timeoutCmd.SetUserData(2)
+	err = ring.FillNextSQE(timeoutCmd.fillSQE)
+	require.NoError(t, err)
+
+	_, err = ring.Submit()
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ {
+		cqe, err := ring.WaitCQEvents(1)
+		require.NoError(t, err)
+
+		idx := cqe.UserData - 1
+		if cqe.Error() != tc.expected[idx] {
+			if cqe.Error() == syscall.EBADFD {
+				t.Skipf("Skipped, accept not supported")
+			}
+			t.Fatalf("expected err: %s, got: %s", tc.expected[idx], cqe.Error())
+		}
+
+		ring.SeenCQE(cqe)
+	}
+
+	syncChan <- struct{}{}
+}
+
+func sendG(t *testing.T, port int, syncChan chan struct{}) {
+	<-syncChan
+	c, err := net.Dial("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	require.NoError(t, err)
+
+	<-syncChan
+	require.NoError(t, c.Close())
 }

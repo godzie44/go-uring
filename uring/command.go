@@ -26,6 +26,7 @@ const (
 	opTimeoutRemove
 	opAccept
 	opAsyncCancel
+	opLinkTimeout
 )
 
 type baseCommand struct {
@@ -127,8 +128,7 @@ func (cmd *WriteVCommand) fillSQE(sqe *SQEntry) {
 //TimeoutCommand timeout command.
 type TimeoutCommand struct {
 	baseCommand
-	dur  time.Duration
-	Name string
+	dur time.Duration
 }
 
 //Timeout - timeout operation.
@@ -180,5 +180,24 @@ func Cancel(targetUserData uint64, flags uint32) *CancelCommand {
 func (cmd *CancelCommand) fillSQE(sqe *SQEntry) {
 	sqe.fill(opAsyncCancel, int32(-1), uintptr(cmd.targetUserData), 0, 0)
 	sqe.opcodeFlags = cmd.flags
+	sqe.setUserData(cmd.userData)
+}
+
+//LinkTimeoutCommand IORING_OP_LINK_TIMEOUT command.
+type LinkTimeoutCommand struct {
+	baseCommand
+	dur time.Duration
+}
+
+//LinkTimeout - timeout operation for linked command.
+func LinkTimeout(duration time.Duration) *LinkTimeoutCommand {
+	return &LinkTimeoutCommand{
+		dur: duration,
+	}
+}
+
+func (cmd *LinkTimeoutCommand) fillSQE(sqe *SQEntry) {
+	spec := syscall.NsecToTimespec(cmd.dur.Nanoseconds())
+	sqe.fill(opLinkTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
 	sqe.setUserData(cmd.userData)
 }
