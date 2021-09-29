@@ -113,12 +113,19 @@ func (r *URing) NextSQE() (entry *SQEntry, err error) {
 	return entry, err
 }
 
-func (r *URing) FillNextSQE(filler func(sqe *SQEntry)) error {
+type Operation interface {
+	PrepSQE(*SQEntry)
+}
+
+func (r *URing) QueueSQE(op Operation, flags uint8, userData uint64) error {
 	sqe, err := r.NextSQE()
 	if err != nil {
 		return err
 	}
-	filler(sqe)
+
+	op.PrepSQE(sqe)
+	sqe.Flags = flags
+	sqe.setUserData(userData)
 	return nil
 }
 
@@ -216,9 +223,9 @@ func (r *URing) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cq
 		}
 	}
 
-	cmd := Timeout(timeout)
-	cmd.SetUserData(libUserDataTimeout)
-	cmd.fillSQE(sqe)
+	op := Timeout(timeout)
+	op.PrepSQE(sqe)
+	sqe.setUserData(libUserDataTimeout)
 	toSubmit = r.flushSQ()
 
 	return r.getCQEvents(toSubmit, count)
@@ -330,7 +337,7 @@ func (p *Probe) GetOP(n int) *probeOp {
 
 func (r *URing) Probe() (*Probe, error) {
 	opts := make([]probeOp, 256)
-	//len := unsafe.Sizeof(Probe{}) + 256 * unsafe.Sizeof(probeOp{})
+	//Len := unsafe.Sizeof(Probe{}) + 256 * unsafe.Sizeof(probeOp{})
 	probe := &Probe{
 		ops: &opts[0],
 	}

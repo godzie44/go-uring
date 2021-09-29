@@ -20,9 +20,9 @@ func TestSingleReadV(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	cmd, err := ReadV(f, 16)
+	op, err := ReadV(f, 16)
 	require.NoError(t, err)
-	require.NoError(t, r.FillNextSQE(cmd.fillSQE))
+	require.NoError(t, r.QueueSQE(op, 0, 0))
 
 	_, err = r.Submit()
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestSingleReadV(t *testing.T) {
 	expected, err := ioutil.ReadFile(readFileName)
 	require.NoError(t, err)
 
-	str := string(unsafe.Slice(cmd.IOVecs[0].Base, cmd.Size))
+	str := string(unsafe.Slice(op.IOVecs[0].Base, op.Size))
 	assert.Equal(t, string(expected), str)
 }
 
@@ -46,13 +46,13 @@ func TestMultipleReadV(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	cmd, err := ReadV(f, 16)
+	op1, err := ReadV(f, 16)
 	require.NoError(t, err)
-	require.NoError(t, r.FillNextSQE(cmd.fillSQE))
+	require.NoError(t, r.QueueSQE(op1, 0, 0))
 
-	cmd2, err := ReadV(f, 16)
+	op2, err := ReadV(f, 16)
 	require.NoError(t, err)
-	require.NoError(t, r.FillNextSQE(cmd2.fillSQE))
+	require.NoError(t, r.QueueSQE(op2, 0, 0))
 
 	_, err = r.Submit()
 	require.NoError(t, err)
@@ -63,9 +63,9 @@ func TestMultipleReadV(t *testing.T) {
 	expected, err := ioutil.ReadFile(readFileName)
 	require.NoError(t, err)
 
-	str := string(unsafe.Slice(cmd.IOVecs[0].Base, cmd.Size))
+	str := string(unsafe.Slice(op1.IOVecs[0].Base, op1.Size))
 	assert.Equal(t, string(expected), str)
-	str2 := string(unsafe.Slice(cmd2.IOVecs[0].Base, cmd2.Size))
+	str2 := string(unsafe.Slice(op2.IOVecs[0].Base, op2.Size))
 	assert.Equal(t, string(expected), str2)
 }
 
@@ -87,7 +87,7 @@ func TestSingleWriteV(t *testing.T) {
 		[]byte("writev test line 3 \n"),
 	}
 
-	require.NoError(t, ring.FillNextSQE(WriteV(f, writeData, 0).fillSQE))
+	require.NoError(t, ring.QueueSQE(WriteV(f, writeData, 0), 0, 0))
 
 	_, err = ring.Submit()
 	require.NoError(t, err)

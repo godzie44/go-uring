@@ -8,29 +8,23 @@ import (
 	"time"
 )
 
-type Command interface {
-	SetUserData(v uint64)
-	UserData() uint64
-	fillSQE(*SQEntry)
-}
-
 type Result struct {
 	err error
-	cmd Command
+	op  Operation
 }
 
 func (r *Result) Error() error {
 	return r.err
 }
 
-func (r *Result) Command() Command {
-	return r.cmd
+func (r *Result) Operation() Operation {
+	return r.op
 }
 
 type Reactor struct {
 	ring *URing
 
-	commands     map[uint64]Command
+	commands     map[uint64]Operation
 	currentNonce uint64
 
 	result chan Result
@@ -50,7 +44,7 @@ func NewReactor(ring *URing, opts ...ReactorOption) *Reactor {
 	r := &Reactor{
 		ring:         ring,
 		result:       make(chan Result),
-		commands:     map[uint64]Command{},
+		commands:     map[uint64]Operation{},
 		tickDuration: time.Millisecond * 100,
 	}
 
@@ -72,7 +66,7 @@ func (r *Reactor) Run(ctx context.Context) error {
 		}
 
 		if err == nil {
-			r.result <- Result{cmd: r.commands[cqe.UserData], err: cqe.Error()}
+			r.result <- Result{op: r.commands[cqe.UserData], err: cqe.Error()}
 			delete(r.commands, cqe.UserData)
 			r.ring.SeenCQE(cqe)
 		}
@@ -89,12 +83,11 @@ func (r *Reactor) Run(ctx context.Context) error {
 	}
 }
 
-func (r *Reactor) Execute(commands ...Command) error {
-	for _, cmd := range commands {
-		cmd.SetUserData(r.currentNonce)
-		r.commands[r.currentNonce] = cmd
+func (r *Reactor) Execute(ops ...Operation) error {
+	for _, op := range ops {
+		r.commands[r.currentNonce] = op
 
-		if err := r.ring.FillNextSQE(cmd.fillSQE); err != nil {
+		if err := r.ring.QueueSQE(op, 0, r.currentNonce); err != nil {
 			return err
 		}
 

@@ -29,42 +29,27 @@ const (
 	opLinkTimeout
 )
 
-type baseCommand struct {
-	userData uint64
+//NopOp - do not perform any I/O. This is useful for testing the performance of the io_uring implementation itself.
+type NopOp struct {
 }
 
-func (cmd *baseCommand) SetUserData(v uint64) {
-	cmd.userData = v
+func Nop() *NopOp {
+	return &NopOp{}
 }
 
-func (cmd *baseCommand) UserData() uint64 {
-	return cmd.userData
-}
-
-//NopCommand - do not perform any I/O. This is useful for testing the performance of the io_uring implementation itself.
-type NopCommand struct {
-	baseCommand
-}
-
-func Nop() *NopCommand {
-	return &NopCommand{}
-}
-
-func (n *NopCommand) fillSQE(sqe *SQEntry) {
+func (op *NopOp) PrepSQE(sqe *SQEntry) {
 	sqe.fill(opNop, -1, uintptr(unsafe.Pointer(nil)), 0, 0)
-	sqe.setUserData(n.userData)
 }
 
-//ReadVCommand vectored read operation, similar to preadv2(2).
-type ReadVCommand struct {
-	baseCommand
+//ReadVOp vectored read operation, similar to preadv2(2).
+type ReadVOp struct {
 	FD     uintptr
 	Size   int64
 	IOVecs []syscall.Iovec
 }
 
 //ReadV vectored read operation, similar to preadv2(2).
-func ReadV(file *os.File, blockSize int64) (*ReadVCommand, error) {
+func ReadV(file *os.File, blockSize int64) (*ReadVOp, error) {
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, err
@@ -92,17 +77,15 @@ func ReadV(file *os.File, blockSize int64) (*ReadVCommand, error) {
 		bytesRemaining -= bytesToRead
 	}
 
-	return &ReadVCommand{FD: file.Fd(), Size: stat.Size(), IOVecs: buffs}, nil
+	return &ReadVOp{FD: file.Fd(), Size: stat.Size(), IOVecs: buffs}, nil
 }
 
-func (cmd *ReadVCommand) fillSQE(sqe *SQEntry) {
-	sqe.fill(opReadV, int32(cmd.FD), uintptr(unsafe.Pointer(&cmd.IOVecs[0])), uint32(len(cmd.IOVecs)), 0)
-	sqe.setUserData(cmd.userData)
+func (op *ReadVOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(opReadV, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), 0)
 }
 
-//WriteVCommand vectored write operation, similar to pwritev2(2).
-type WriteVCommand struct {
-	baseCommand
+//WriteVOp vectored write operation, similar to pwritev2(2).
+type WriteVOp struct {
 	FD     uintptr
 	IOVecs []syscall.Iovec
 	Offset uint64
@@ -110,94 +93,85 @@ type WriteVCommand struct {
 
 //WriteV vectored writes bytes to file. Write starts from offset.
 //If the file is not seekable, offset must be set to zero.
-func WriteV(file *os.File, bytes [][]byte, offset uint64) *WriteVCommand {
+func WriteV(file *os.File, bytes [][]byte, offset uint64) *WriteVOp {
 	buffs := make([]syscall.Iovec, len(bytes))
 	for i := range bytes {
 		buffs[i].SetLen(len(bytes[i]))
 		buffs[i].Base = &bytes[i][0]
 	}
 
-	return &WriteVCommand{FD: file.Fd(), IOVecs: buffs, Offset: offset}
+	return &WriteVOp{FD: file.Fd(), IOVecs: buffs, Offset: offset}
 }
 
-func (cmd *WriteVCommand) fillSQE(sqe *SQEntry) {
-	sqe.fill(opWriteV, int32(cmd.FD), uintptr(unsafe.Pointer(&cmd.IOVecs[0])), uint32(len(cmd.IOVecs)), cmd.Offset)
-	sqe.setUserData(cmd.userData)
+func (op *WriteVOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(opWriteV, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), op.Offset)
 }
 
-//TimeoutCommand timeout command.
-type TimeoutCommand struct {
-	baseCommand
+//TimeoutOp timeout command.
+type TimeoutOp struct {
 	dur time.Duration
 }
 
 //Timeout - timeout operation.
-func Timeout(duration time.Duration) *TimeoutCommand {
-	return &TimeoutCommand{
+func Timeout(duration time.Duration) *TimeoutOp {
+	return &TimeoutOp{
 		dur: duration,
 	}
 }
 
-func (cmd *TimeoutCommand) fillSQE(sqe *SQEntry) {
-	spec := syscall.NsecToTimespec(cmd.dur.Nanoseconds())
+func (op *TimeoutOp) PrepSQE(sqe *SQEntry) {
+	spec := syscall.NsecToTimespec(op.dur.Nanoseconds())
 	sqe.fill(opTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
-	sqe.setUserData(cmd.userData)
 }
 
-//AcceptCommand accept command.
-type AcceptCommand struct {
-	baseCommand
+//AcceptOp accept command.
+type AcceptOp struct {
 	fd    uintptr
 	flags uint32
 }
 
 //Accept - accept operation.
-func Accept(fd uintptr, flags uint32) *AcceptCommand {
-	return &AcceptCommand{
+func Accept(fd uintptr, flags uint32) *AcceptOp {
+	return &AcceptOp{
 		fd:    fd,
 		flags: flags,
 	}
 }
 
-func (cmd *AcceptCommand) fillSQE(sqe *SQEntry) {
-	sqe.fill(opAccept, int32(cmd.fd), 0, 0, 0)
-	sqe.opcodeFlags = cmd.flags
-	sqe.setUserData(cmd.userData)
+func (op *AcceptOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(opAccept, int32(op.fd), 0, 0, 0)
+	sqe.OpcodeFlags = op.flags
 }
 
-//CancelCommand Attempt  to cancel an already issued request.
-type CancelCommand struct {
-	baseCommand
+//CancelOp Attempt  to cancel an already issued request.
+type CancelOp struct {
 	flags          uint32
 	targetUserData uint64
 }
 
-//Cancel create CancelCommand. Put in targetUserData value of user_data field of the request that should be cancelled.
-func Cancel(targetUserData uint64, flags uint32) *CancelCommand {
-	return &CancelCommand{flags: flags, targetUserData: targetUserData}
+//Cancel create CancelOp. Put in targetUserData value of user_data field of the request that should be cancelled.
+func Cancel(targetUserData uint64, flags uint32) *CancelOp {
+	return &CancelOp{flags: flags, targetUserData: targetUserData}
 }
 
-func (cmd *CancelCommand) fillSQE(sqe *SQEntry) {
-	sqe.fill(opAsyncCancel, int32(-1), uintptr(cmd.targetUserData), 0, 0)
-	sqe.opcodeFlags = cmd.flags
-	sqe.setUserData(cmd.userData)
+func (op *CancelOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(opAsyncCancel, int32(-1), uintptr(op.targetUserData), 0, 0)
+	sqe.OpcodeFlags = op.flags
 }
 
-//LinkTimeoutCommand IORING_OP_LINK_TIMEOUT command.
-type LinkTimeoutCommand struct {
-	baseCommand
+//LinkTimeoutOp IORING_OP_LINK_TIMEOUT command.
+type LinkTimeoutOp struct {
 	dur time.Duration
 }
 
 //LinkTimeout - timeout operation for linked command.
-func LinkTimeout(duration time.Duration) *LinkTimeoutCommand {
-	return &LinkTimeoutCommand{
+func LinkTimeout(duration time.Duration) *LinkTimeoutOp {
+	return &LinkTimeoutOp{
 		dur: duration,
 	}
 }
 
-func (cmd *LinkTimeoutCommand) fillSQE(sqe *SQEntry) {
-	spec := syscall.NsecToTimespec(cmd.dur.Nanoseconds())
+func (op *LinkTimeoutOp) PrepSQE(sqe *SQEntry) {
+	spec := syscall.NsecToTimespec(op.dur.Nanoseconds())
 	sqe.fill(opLinkTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
-	sqe.setUserData(cmd.userData)
 }

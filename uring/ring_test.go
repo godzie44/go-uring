@@ -17,9 +17,7 @@ func TestCreateRing(t *testing.T) {
 
 func queueNOPs(r *URing, count int, offset int) (err error) {
 	for i := 0; i < count; i++ {
-		nop := Nop()
-		nop.SetUserData(uint64(i + offset))
-		err = r.FillNextSQE(nop.fillSQE)
+		err = r.QueueSQE(Nop(), 0, uint64(i+offset))
 		if err != nil {
 			return err
 		}
@@ -106,11 +104,9 @@ func TestCQRingSize(t *testing.T) {
 
 func fillNOPs(r *URing) (filled int) {
 	for {
-		sqe, err := r.NextSQE()
-		if err == ErrSQRingOverflow {
+		if err := r.QueueSQE(Nop(), 0, 0); err == ErrSQRingOverflow {
 			break
 		}
-		Nop().fillSQE(sqe)
 		filled++
 	}
 	return filled

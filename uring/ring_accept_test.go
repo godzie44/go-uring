@@ -98,8 +98,7 @@ func TestAccept(t *testing.T) {
 }
 
 func acceptConnection(t *testing.T, ring *URing, fd uintptr) (cfd uintptr, err error) {
-	cmd := Accept(fd, 0)
-	err = ring.FillNextSQE(cmd.fillSQE)
+	err = ring.QueueSQE(Accept(fd, 0), 0, 0)
 	require.NoError(t, err)
 
 	_, err = ring.Submit()
@@ -114,25 +113,23 @@ func acceptConnection(t *testing.T, ring *URing, fd uintptr) (cfd uintptr, err e
 }
 
 func queueSend(ring *URing, fd uintptr, buff []byte) error {
-	cmd := &WriteVCommand{FD: fd, IOVecs: []syscall.Iovec{
+	op := &WriteVOp{FD: fd, IOVecs: []syscall.Iovec{
 		{
 			Base: &buff[0],
 			Len:  uint64(len(buff)),
 		},
 	}, Offset: 0}
-	cmd.SetUserData(1)
-	return ring.FillNextSQE(cmd.fillSQE)
+	return ring.QueueSQE(op, 0, 1)
 }
 
 func queueRecv(ring *URing, fd uintptr, buff []byte) error {
-	cmd := &ReadVCommand{FD: fd, IOVecs: []syscall.Iovec{
+	op := &ReadVOp{FD: fd, IOVecs: []syscall.Iovec{
 		{
 			Base: &buff[0],
 			Len:  uint64(len(buff)),
 		},
 	}}
-	cmd.SetUserData(2)
-	return ring.FillNextSQE(cmd.fillSQE)
+	return ring.QueueSQE(op, 0, 2)
 }
 
 // Test we can cancel IORING_OP_ACCEPT.
@@ -152,9 +149,7 @@ func TestAcceptCancel(t *testing.T) {
 		tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
 		require.NoError(t, err)
 
-		acceptCmd := Accept(listenerFd, 0)
-		acceptCmd.SetUserData(1)
-		require.NoError(t, ring.FillNextSQE(acceptCmd.fillSQE))
+		require.NoError(t, ring.QueueSQE(Accept(listenerFd, 0), 0, 1))
 
 		_, err = ring.Submit()
 		require.NoError(t, err)
@@ -163,9 +158,7 @@ func TestAcceptCancel(t *testing.T) {
 			time.Sleep(tc.cancelDelay)
 		}
 
-		cancelCmd := Cancel(1, 0)
-		cancelCmd.SetUserData(2)
-		require.NoError(t, ring.FillNextSQE(cancelCmd.fillSQE))
+		require.NoError(t, ring.QueueSQE(Cancel(1, 0), 0, 2))
 		_, err = ring.Submit()
 		require.NoError(t, err)
 
@@ -209,8 +202,7 @@ func TestAcceptMany(t *testing.T) {
 
 			listeners = append(listeners, tcpListener)
 
-			cmd := Accept(listenerFd, 0)
-			err = ring.FillNextSQE(cmd.fillSQE)
+			err = ring.QueueSQE(Accept(listenerFd, 0), 0, 0)
 			require.NoError(t, err)
 		}
 
@@ -288,16 +280,10 @@ func recvG(t *testing.T, port int, tc linkTestCase, syncChan chan struct{}) {
 
 	syncChan <- struct{}{}
 
-	acceptCmd := Accept(listenerFd, 0)
-	sqe, err := ring.NextSQE()
+	err = ring.QueueSQE(Accept(listenerFd, 0), 1<<2, 1)
 	require.NoError(t, err)
-	acceptCmd.SetUserData(1)
-	acceptCmd.fillSQE(sqe)
-	sqe.flags |= 1 << 2
 
-	timeoutCmd := LinkTimeout(tc.timeout)
-	timeoutCmd.SetUserData(2)
-	err = ring.FillNextSQE(timeoutCmd.fillSQE)
+	err = ring.QueueSQE(LinkTimeout(tc.timeout), 0, 2)
 	require.NoError(t, err)
 
 	_, err = ring.Submit()

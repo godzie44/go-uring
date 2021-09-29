@@ -22,7 +22,7 @@ func TestReactorExecuteReadVCommand(t *testing.T) {
 	f, err := os.Open("../go.mod")
 	require.NoError(t, err)
 	defer f.Close()
-	cmd, err := ReadV(f, 16)
+	op, err := ReadV(f, 16)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -36,13 +36,13 @@ func TestReactorExecuteReadVCommand(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	err = reactor.Execute(cmd)
+	err = reactor.Execute(op)
 	require.NoError(t, err)
 
 	select {
 	case res := <-reactor.Result():
 		assert.NoError(t, res.Error())
-		reads := res.Command().(*ReadVCommand)
+		reads := res.Operation().(*ReadVOp)
 		expected, err := ioutil.ReadFile("../go.mod")
 		assert.NoError(t, err)
 

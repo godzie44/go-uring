@@ -82,47 +82,47 @@ func sysRegisterProbe(ringFD int, probe *Probe, len int) error {
 }
 
 type SQEntry struct {
-	opcode      uint8
-	flags       uint8
-	ioPrio      uint16
-	fd          int32
-	off         uint64
-	addr        uint64
-	len         uint32
-	opcodeFlags uint32
-	userData    uint64
+	OpCode      uint8
+	Flags       uint8
+	IoPrio      uint16
+	Fd          int32
+	Off         uint64
+	Addr        uint64
+	Len         uint32
+	OpcodeFlags uint32
+	UserData    uint64
 
-	bufIG       uint16
-	personality uint16
-	spliceFdIn  int32
+	BufIG       uint16
+	Personality uint16
+	SpliceFdIn  int32
 	_pad2       [2]uint64
 }
 
 //go:uintptrescapes
 func (sqe *SQEntry) fill(op opcode, fd int32, addr uintptr, len uint32, offset uint64) {
-	sqe.opcode = uint8(op)
-	sqe.flags = 0
-	sqe.ioPrio = 0
-	sqe.fd = fd
-	sqe.off = offset
+	sqe.OpCode = uint8(op)
+	sqe.Flags = 0
+	sqe.IoPrio = 0
+	sqe.Fd = fd
+	sqe.Off = offset
 	setAddr(sqe, addr)
-	sqe.len = len
-	sqe.opcodeFlags = 0
-	sqe.userData = 0
-	sqe.bufIG = 0
-	sqe.personality = 0
-	sqe.spliceFdIn = 0
+	sqe.Len = len
+	sqe.OpcodeFlags = 0
+	sqe.UserData = 0
+	sqe.BufIG = 0
+	sqe.Personality = 0
+	sqe.SpliceFdIn = 0
 	sqe._pad2[0] = 0
 	sqe._pad2[1] = 0
 }
 
 func (sqe *SQEntry) setUserData(ud uint64) {
-	sqe.userData = ud
+	sqe.UserData = ud
 }
 
 //go:uintptrescapes
 func setAddr(sqe *SQEntry, addr uintptr) {
-	sqe.addr = uint64(addr)
+	sqe.Addr = uint64(addr)
 }
 
 type CQEvent struct {

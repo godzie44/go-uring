@@ -15,7 +15,7 @@ func TestSingleTimeout(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	require.NoError(t, r.FillNextSQE(Timeout(time.Second).fillSQE))
+	require.NoError(t, r.QueueSQE(Timeout(time.Second), 0, 0))
 
 	submitTime := time.Now()
 	_, err = r.Submit()
@@ -34,13 +34,8 @@ func TestMultipleTimeout(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	twoSecTimeout := Timeout(2 * time.Second)
-	twoSecTimeout.SetUserData(1)
-	require.NoError(t, r.FillNextSQE(twoSecTimeout.fillSQE))
-
-	oneSecTimeout := Timeout(time.Second)
-	oneSecTimeout.SetUserData(2)
-	require.NoError(t, r.FillNextSQE(oneSecTimeout.fillSQE))
+	require.NoError(t, r.QueueSQE(Timeout(2*time.Second), 0, 1))
+	require.NoError(t, r.QueueSQE(Timeout(time.Second), 0, 2))
 
 	submitTime := time.Now()
 	_, err = r.Submit()
@@ -78,8 +73,8 @@ func TestSingleTimeoutWait(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	require.NoError(t, r.FillNextSQE(Nop().fillSQE))
-	require.NoError(t, r.FillNextSQE(Nop().fillSQE))
+	require.NoError(t, r.QueueSQE(Nop(), 0, 0))
+	require.NoError(t, r.QueueSQE(Nop(), 0, 0))
 
 	var i = 0
 	for {
