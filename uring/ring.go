@@ -49,7 +49,7 @@ const MaxEntries uint32 = 1 << 15
 type URing struct {
 	fd int
 
-	params *ringParams
+	Params *ringParams
 
 	cqRing *cq
 	sqRing *sq
@@ -84,7 +84,7 @@ func NewRing(entries uint32, opts ...URingOption) (*URing, error) {
 		return nil, err
 	}
 
-	r := &URing{params: &params, fd: fd, sqRing: &sq{}, cqRing: &cq{}, result: make(chan string)}
+	r := &URing{Params: &params, fd: fd, sqRing: &sq{}, cqRing: &cq{}, result: make(chan string)}
 	err = r.allocRing(&params)
 
 	return r, err

@@ -83,7 +83,7 @@ func TestCQRingFull(t *testing.T) {
 	}
 
 	assert.GreaterOrEqual(t, i, 8)
-	assert.False(t, *ring.cqRing.kOverflow != 4 && !(ring.params.FeatNoDrop()))
+	assert.False(t, *ring.cqRing.kOverflow != 4 && !(ring.Params.FeatNoDrop()))
 }
 
 //TestCQRingSize test CQ ring sizing.
@@ -95,7 +95,7 @@ func TestCQRingSize(t *testing.T) {
 	}
 	require.NoError(t, err)
 
-	assert.GreaterOrEqual(t, ring.params.cqEntries, uint32(64))
+	assert.GreaterOrEqual(t, ring.Params.cqEntries, uint32(64))
 	require.NoError(t, ring.Close())
 
 	_, err = NewRing(4, WithCQSize(0))

@@ -27,6 +27,18 @@ const (
 	opAccept
 	opAsyncCancel
 	opLinkTimeout
+	opConnect
+	opFAllocate
+	opOpenAt
+	opClose
+	opFilesUpdate
+	opStatX
+	opRead
+	opWrite
+	opFAdvise
+	opMAdvise
+	opSend
+	opRecv
 )
 
 //NopOp - do not perform any I/O. This is useful for testing the performance of the io_uring implementation itself.
@@ -174,4 +186,46 @@ func LinkTimeout(duration time.Duration) *LinkTimeoutOp {
 func (op *LinkTimeoutOp) PrepSQE(sqe *SQEntry) {
 	spec := syscall.NsecToTimespec(op.dur.Nanoseconds())
 	sqe.fill(opLinkTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
+}
+
+//RecvOp receive a message from a socket operation.
+type RecvOp struct {
+	fd       uintptr
+	vec      syscall.Iovec
+	msgFlags uint32
+}
+
+//Recv receive a message from a socket.
+func Recv(socketFd uintptr, vec syscall.Iovec, msgFlags uint32) *RecvOp {
+	return &RecvOp{
+		fd:       socketFd,
+		vec:      vec,
+		msgFlags: msgFlags,
+	}
+}
+
+func (op *RecvOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(opRecv, int32(op.fd), uintptr(unsafe.Pointer(op.vec.Base)), uint32(op.vec.Len), 0)
+	sqe.OpcodeFlags = op.msgFlags
+}
+
+//SendOp send a message to a socket operation.
+type SendOp struct {
+	fd       uintptr
+	vec      syscall.Iovec
+	msgFlags uint32
+}
+
+//Send send a message to a socket.
+func Send(socketFd uintptr, vec syscall.Iovec, msgFlags uint32) *SendOp {
+	return &SendOp{
+		fd:       socketFd,
+		vec:      vec,
+		msgFlags: msgFlags,
+	}
+}
+
+func (op *SendOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(opSend, int32(op.fd), uintptr(unsafe.Pointer(op.vec.Base)), uint32(op.vec.Len), 0)
+	sqe.OpcodeFlags = op.msgFlags
 }
