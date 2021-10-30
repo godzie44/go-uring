@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"github.com/godzie44/go-uring/uring"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"sync"
 	"syscall"
@@ -21,7 +24,7 @@ const (
 type connInfo struct {
 	typ  connType
 	fd   int
-	buff []byte
+	buff *bytes.Buffer
 }
 
 var connMap = map[int]*connInfo{}
@@ -29,6 +32,10 @@ var connMap = map[int]*connInfo{}
 var response = []byte("pong\n")
 
 func main() {
+	go func() {
+		_ = http.ListenAndServe("localhost:6060", nil)
+	}()
+
 	socket, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
 	checkErr(err)
 	defer syscall.Close(socket)
@@ -103,7 +110,7 @@ func handleEvents(ring *uring.URing, events []*uring.CQEvent) {
 }
 
 var buffPool = sync.Pool{New: func() interface{} {
-	return make([]byte, 2048)
+	return bytes.NewBuffer(make([]byte, 2048))
 }}
 
 func addAccept(ring *uring.URing, fd int) {
@@ -116,12 +123,12 @@ func addRead(ring *uring.URing, fd int) {
 	if _, exists := connMap[fd]; !exists {
 		connMap[fd] = &connInfo{
 			fd:   fd,
-			buff: buffPool.Get().([]byte),
+			buff: buffPool.Get().(*bytes.Buffer),
 		}
 	}
 	connMap[fd].typ = READ
 
-	vec := syscall.Iovec{Base: &connMap[fd].buff[0], Len: uint64(len(connMap[fd].buff))}
+	vec := syscall.Iovec{Base: &connMap[fd].buff.Bytes()[0], Len: uint64(connMap[fd].buff.Len())}
 	checkErr(
 		ring.QueueSQE(uring.Recv(uintptr(fd), vec, 0), 0, uint64(fd)),
 	)
@@ -141,7 +148,7 @@ func shutdown(fd int) {
 	buffPool.Put(conn.buff)
 	delete(connMap, fd)
 
-	syscall.Shutdown(fd, syscall.SHUT_RDWR)
+	_ = syscall.Shutdown(fd, syscall.SHUT_RDWR)
 }
 
 func setDefaultListenerSockopts(s int) error {
