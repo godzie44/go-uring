@@ -2,6 +2,7 @@ package uring
 
 import (
 	"context"
+	"github.com/godzie44/go-uring/uring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
@@ -13,16 +14,14 @@ import (
 )
 
 func TestReactorExecuteReadVCommand(t *testing.T) {
-	t.Skipf("currently race")
-
-	r, err := NewRing(64)
+	r, err := uring.NewRing(64)
 	require.NoError(t, err)
 	defer r.Close()
 
 	f, err := os.Open("../go.mod")
 	require.NoError(t, err)
 	defer f.Close()
-	op, err := ReadV(f, 16)
+	op, err := uring.ReadV(f, 16)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,7 +41,7 @@ func TestReactorExecuteReadVCommand(t *testing.T) {
 	select {
 	case res := <-reactor.Result():
 		assert.NoError(t, res.Error())
-		reads := res.Operation().(*ReadVOp)
+		reads := res.Operation().(*uring.ReadVOp)
 		expected, err := ioutil.ReadFile("../go.mod")
 		assert.NoError(t, err)
 

@@ -2,6 +2,7 @@ package uring
 
 import (
 	"context"
+	"github.com/godzie44/go-uring/uring"
 	"log"
 	"runtime"
 	"syscall"
@@ -10,21 +11,21 @@ import (
 
 type Result struct {
 	err error
-	op  Operation
+	op  uring.Operation
 }
 
 func (r *Result) Error() error {
 	return r.err
 }
 
-func (r *Result) Operation() Operation {
+func (r *Result) Operation() uring.Operation {
 	return r.op
 }
 
 type Reactor struct {
-	ring *URing
+	ring *uring.URing
 
-	commands     map[uint64]Operation
+	commands     map[uint64]uring.Operation
 	currentNonce uint64
 
 	result chan Result
@@ -40,11 +41,11 @@ func WithTickTimeout(duration time.Duration) ReactorOption {
 	}
 }
 
-func NewReactor(ring *URing, opts ...ReactorOption) *Reactor {
+func NewReactor(ring *uring.URing, opts ...ReactorOption) *Reactor {
 	r := &Reactor{
 		ring:         ring,
 		result:       make(chan Result),
-		commands:     map[uint64]Operation{},
+		commands:     map[uint64]uring.Operation{},
 		tickDuration: time.Millisecond * 100,
 	}
 
@@ -83,7 +84,7 @@ func (r *Reactor) Run(ctx context.Context) error {
 	}
 }
 
-func (r *Reactor) Execute(ops ...Operation) error {
+func (r *Reactor) Execute(ops ...uring.Operation) error {
 	for _, op := range ops {
 		r.commands[r.currentNonce] = op
 

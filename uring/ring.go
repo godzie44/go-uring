@@ -3,6 +3,7 @@ package uring
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -55,6 +56,8 @@ type URing struct {
 	sqRing *sq
 
 	result chan string
+
+	tailLock sync.Mutex
 }
 
 var ErrRingSetup = errors.New("ring setup")
@@ -99,6 +102,9 @@ func (r *URing) Close() error {
 var ErrSQRingOverflow = errors.New("sq ring overflow")
 
 func (r *URing) NextSQE() (entry *SQEntry, err error) {
+	r.tailLock.Lock()
+	defer r.tailLock.Unlock()
+
 	head := atomic.LoadUint32(r.sqRing.kHead)
 	next := r.sqRing.sqeTail + 1
 
@@ -139,6 +145,9 @@ func (r *URing) Submit() (uint, error) {
 var _sizeOfUint32 = unsafe.Sizeof(uint32(0))
 
 func (r *URing) flushSQ() uint32 {
+	r.tailLock.Lock()
+	defer r.tailLock.Unlock()
+
 	mask := *r.sqRing.kRingMask
 	tail := atomic.LoadUint32(r.sqRing.kTail)
 	subCnt := r.sqRing.sqeTail - r.sqRing.sqeHead
