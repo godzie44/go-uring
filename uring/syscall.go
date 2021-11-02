@@ -25,6 +25,9 @@ const (
 // io_uring_enter flags
 const (
 	sysRingEnterGetEvents uint32 = 1 << 0
+	sysRingEnterSQWakeup  uint32 = 1 << 1
+	sysRingEnterSQWait    uint32 = 1 << 2
+	sysRingEnterExtArg    uint32 = 1 << 3
 )
 
 // io_uring_register(2) opcodes and arguments
@@ -139,4 +142,16 @@ func (cqe *CQEvent) Error() error {
 		return syscall.Errno(uintptr(-cqe.Res))
 	}
 	return nil
+}
+
+type getEventsArg struct {
+	sigMask   uintptr
+	sigMaskSz uint32
+	_pad      uint32
+	ts        uintptr
+}
+
+//go:uintptrescapes
+func newGetEventsArg(sigMask uintptr, sigMaskSz uint32, ts uintptr) *getEventsArg {
+	return &getEventsArg{sigMask: sigMask, sigMaskSz: sigMaskSz, ts: ts}
 }

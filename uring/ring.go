@@ -3,6 +3,8 @@ package uring
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -167,7 +169,14 @@ func (r *URing) flushSQ() uint32 {
 	return tail - atomic.LoadUint32(r.sqRing.kHead)
 }
 
-func (r *URing) getCQEvents(submit, count uint32) (cqe *CQEvent, err error) {
+type getParams struct {
+	submit, waitNr uint32
+	flags          uint32
+	arg            unsafe.Pointer
+	sz             int
+}
+
+func (r *URing) getCQEvents(params getParams) (cqe *CQEvent, err error) {
 	for {
 		var needEnter = false
 		var cqOverflowFlush = false
@@ -179,7 +188,7 @@ func (r *URing) getCQEvents(submit, count uint32) (cqe *CQEvent, err error) {
 			break
 		}
 
-		if cqe == nil && count == 0 && submit == 0 {
+		if cqe == nil && params.waitNr == 0 && params.submit == 0 {
 			if !r.sqRing.cqNeedFlush() {
 				err = syscall.EAGAIN
 				break
@@ -187,12 +196,12 @@ func (r *URing) getCQEvents(submit, count uint32) (cqe *CQEvent, err error) {
 			cqOverflowFlush = true
 		}
 
-		if count > available || cqOverflowFlush {
-			flags = sysRingEnterGetEvents
+		if params.waitNr > available || cqOverflowFlush {
+			flags = sysRingEnterGetEvents | params.flags
 			needEnter = true
 		}
 
-		if submit != 0 {
+		if params.submit != 0 {
 			needEnter = true
 		}
 
@@ -201,12 +210,12 @@ func (r *URing) getCQEvents(submit, count uint32) (cqe *CQEvent, err error) {
 		}
 
 		var consumed uint
-		consumed, err = sysEnter2(r.fd, submit, count, flags, nil, numSig/8)
+		consumed, err = sysEnter2(r.fd, params.submit, params.waitNr, flags, (*unix.Sigset_t)(params.arg), params.sz)
 
 		if err != nil {
 			break
 		}
-		submit -= uint32(consumed)
+		params.submit -= uint32(consumed)
 		if cqe != nil {
 			break
 		}
@@ -216,6 +225,23 @@ func (r *URing) getCQEvents(submit, count uint32) (cqe *CQEvent, err error) {
 }
 
 func (r *URing) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cqe *CQEvent, err error) {
+	if r.Params.ExtArgFeature() {
+		ts := syscall.NsecToTimespec(timeout.Nanoseconds())
+		arg := newGetEventsArg(uintptr(unsafe.Pointer(nil)), numSig/8, uintptr(unsafe.Pointer(&ts)))
+
+		cqe, err = r.getCQEvents(getParams{
+			submit: 0,
+			waitNr: count,
+			flags:  sysRingEnterExtArg,
+			arg:    unsafe.Pointer(arg),
+			sz:     int(unsafe.Sizeof(getEventsArg{})),
+		})
+
+		runtime.KeepAlive(arg)
+		runtime.KeepAlive(ts)
+		return cqe, err
+	}
+
 	var toSubmit uint32
 
 	var sqe *SQEntry
@@ -237,15 +263,30 @@ func (r *URing) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cq
 	sqe.setUserData(libUserDataTimeout)
 	toSubmit = r.flushSQ()
 
-	return r.getCQEvents(toSubmit, count)
+	return r.getCQEvents(getParams{
+		submit: toSubmit,
+		waitNr: count,
+		arg:    unsafe.Pointer(nil),
+		sz:     numSig / 8,
+	})
 }
 
 func (r *URing) WaitCQEvents(count uint32) (cqe *CQEvent, err error) {
-	return r.getCQEvents(0, count)
+	return r.getCQEvents(getParams{
+		submit: 0,
+		waitNr: count,
+		arg:    unsafe.Pointer(nil),
+		sz:     numSig / 8,
+	})
 }
 
 func (r *URing) SubmitAndWaitCQEvents(count uint32) (cqe *CQEvent, err error) {
-	return r.getCQEvents(r.flushSQ(), count)
+	return r.getCQEvents(getParams{
+		submit: r.flushSQ(),
+		waitNr: count,
+		arg:    unsafe.Pointer(nil),
+		sz:     numSig / 8,
+	})
 }
 
 func (r *URing) PeekCQE() (*CQEvent, error) {
@@ -278,7 +319,7 @@ func (r *URing) peekCQEvent() (uint32, *CQEvent, error) {
 
 		cqe = (*CQEvent)(unsafe.Add(unsafe.Pointer(r.cqRing.cqeBuff), uintptr(head&mask)*unsafe.Sizeof(CQEvent{})))
 
-		if cqe.UserData == libUserDataTimeout {
+		if !r.Params.ExtArgFeature() && cqe.UserData == libUserDataTimeout {
 			if cqe.Res < 0 {
 				err = cqe.Error()
 			}

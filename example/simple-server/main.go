@@ -54,7 +54,7 @@ func main() {
 	checkErr(err)
 	defer ring.Close()
 
-	if !ring.Params.FeatFastPoll() {
+	if !ring.Params.FastPollFeature() {
 		checkErr(errors.New("IORING_FEAT_FAST_POLL not available"))
 	}
 

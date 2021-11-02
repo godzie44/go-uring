@@ -73,15 +73,22 @@ func TestSingleTimeoutWait(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	require.NoError(t, r.QueueSQE(Nop(), 0, 0))
-	require.NoError(t, r.QueueSQE(Nop(), 0, 0))
+	require.NoError(t, r.QueueSQE(Nop(), 0, 1))
+	require.NoError(t, r.QueueSQE(Nop(), 0, 2))
+
+	if r.Params.ExtArgFeature() {
+		c, err := r.Submit()
+		require.NoError(t, err)
+		require.Equal(t, 2, int(c))
+	}
 
 	var i = 0
 	for {
-		cqe, err := r.WaitCQEventsWithTimeout(2, time.Second)
+		cqe, err := r.WaitCQEventsWithTimeout(2, time.Second*2)
 		if err == syscall.ETIME {
 			break
 		}
+
 		if err == syscall.EINTR || err == syscall.EAGAIN {
 			runtime.Gosched()
 			continue

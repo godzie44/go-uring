@@ -54,25 +54,30 @@ const (
 	featSingleMMap uint32 = 1 << 0
 	featNoDrop     uint32 = 1 << 1
 	featFastPoll   uint32 = 1 << 5
+	featExtArg     uint32 = 1 << 8
 )
 
-func (p *ringParams) CanFeatSingleMMap() bool {
+func (p *ringParams) SingleMMapFeature() bool {
 	return p.features&featSingleMMap != 0
 }
 
-func (p *ringParams) FeatNoDrop() bool {
+func (p *ringParams) NoDropFeature() bool {
 	return p.features&featNoDrop != 0
 }
 
-func (p *ringParams) FeatFastPoll() bool {
+func (p *ringParams) FastPollFeature() bool {
 	return p.features&featFastPoll != 0
+}
+
+func (p *ringParams) ExtArgFeature() bool {
+	return p.features&featExtArg != 0
 }
 
 func (r *URing) allocRing(params *ringParams) error {
 	r.sqRing.ringSize = uint64(params.sqOffset.array) + uint64(params.sqEntries*(uint32)(unsafe.Sizeof(uint32(0))))
 	r.cqRing.ringSize = uint64(params.cqOffset.cqes) + uint64(params.cqEntries*(uint32)(unsafe.Sizeof(CQEvent{})))
 
-	if params.CanFeatSingleMMap() {
+	if params.SingleMMapFeature() {
 		if r.cqRing.ringSize > r.sqRing.ringSize {
 			r.sqRing.ringSize = r.cqRing.ringSize
 		}
@@ -85,7 +90,7 @@ func (r *URing) allocRing(params *ringParams) error {
 	}
 	r.sqRing.buff = data
 
-	if params.CanFeatSingleMMap() {
+	if params.SingleMMapFeature() {
 		r.cqRing.buff = r.sqRing.buff
 	} else {
 		data, err = syscall.Mmap(r.fd, int64(cqRingOffset), int(r.cqRing.ringSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_POPULATE)

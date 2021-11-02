@@ -240,7 +240,7 @@ func TestAcceptLink(t *testing.T) {
 	ring, err := NewRing(1)
 	require.NoError(t, err)
 
-	if ring.Params.FeatFastPoll() {
+	if ring.Params.FastPollFeature() {
 		testCases = append(testCases, linkTestCase{doConnect: false, timeout: time.Millisecond * 200, expected: [2]error{syscall.ECANCELED, syscall.ETIME}})
 	} else {
 		testCases = append(testCases, linkTestCase{doConnect: false, timeout: time.Millisecond * 200, expected: [2]error{syscall.EINTR, syscall.EALREADY}})
