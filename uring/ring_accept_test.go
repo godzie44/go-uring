@@ -315,3 +315,37 @@ func sendG(t *testing.T, port int, syncChan chan struct{}) {
 	<-syncChan
 	require.NoError(t, c.Close())
 }
+
+// Test that IORING_OP_ACCEPT return remote sockaddr.
+func TestAcceptAddr(t *testing.T) {
+	ring, err := NewRing(64)
+	require.NoError(t, err)
+	defer ring.Close()
+
+	tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
+	require.NoError(t, err)
+	defer tcpListener.Close()
+
+	clientConnChan := make(chan net.Conn)
+	go dial(t, clientConnChan)
+
+	op := Accept(listenerFd, 0)
+
+	err = ring.QueueSQE(op, 0, 0)
+	require.NoError(t, err)
+	_, err = ring.Submit()
+	require.NoError(t, err)
+
+	cqe, err := ring.WaitCQEvents(1)
+	require.NoError(t, err)
+
+	ring.SeenCQE(cqe)
+
+	c := <-clientConnChan
+	defer c.Close()
+
+	rAddr, err := op.Addr()
+	require.NoError(t, err)
+	require.Equal(t, c.LocalAddr().String(), rAddr.String())
+	require.Equal(t, c.LocalAddr().Network(), rAddr.Network())
+}

@@ -1,7 +1,11 @@
 package uring
 
 import (
+	"github.com/libp2p/go-sockaddr"
+	sockaddrnet "github.com/libp2p/go-sockaddr/net"
+	"golang.org/x/sys/unix"
 	"math"
+	"net"
 	"os"
 	"syscall"
 	"time"
@@ -140,19 +144,36 @@ func (op *TimeoutOp) PrepSQE(sqe *SQEntry) {
 type AcceptOp struct {
 	fd    uintptr
 	flags uint32
+	addr  *unix.RawSockaddrAny
+	len   uint32
 }
 
 //Accept - accept operation.
 func Accept(fd uintptr, flags uint32) *AcceptOp {
 	return &AcceptOp{
+		addr:  &unix.RawSockaddrAny{},
+		len:   unix.SizeofSockaddrAny,
 		fd:    fd,
 		flags: flags,
 	}
 }
 
 func (op *AcceptOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opAccept, int32(op.fd), 0, 0, 0)
+	sqe.fill(opAccept, int32(op.fd), uintptr(unsafe.Pointer(op.addr)), 0, uint64(uintptr(unsafe.Pointer(&op.len))))
 	sqe.OpcodeFlags = op.flags
+}
+
+func (op *AcceptOp) Addr() (net.Addr, error) {
+	sAddr, err := sockaddr.AnyToSockaddr(op.addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return sockaddrnet.SockaddrToTCPAddr(sAddr), nil
+}
+
+func (op *AcceptOp) AddrLen() uint32 {
+	return op.len
 }
 
 //CancelOp Attempt  to cancel an already issued request.
