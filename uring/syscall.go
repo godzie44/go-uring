@@ -1,7 +1,6 @@
 package uring
 
 import (
-	"golang.org/x/sys/unix"
 	"math"
 	"syscall"
 	"unsafe"
@@ -41,18 +40,18 @@ const (
 	libUserDataTimeout = math.MaxUint64
 )
 
-func sysEnter(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, sig *unix.Sigset_t) (uint, error) {
+func sysEnter(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, sig unsafe.Pointer) (uint, error) {
 	return sysEnter2(ringFD, toSubmit, minComplete, flags, sig, numSig/8)
 }
 
-func sysEnter2(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, sig *unix.Sigset_t, sz int) (uint, error) {
+func sysEnter2(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, sig unsafe.Pointer, sz int) (uint, error) {
 	consumed, _, errno := syscall.Syscall6(
 		sysRingEnter,
 		uintptr(ringFD),
 		uintptr(toSubmit),
 		uintptr(minComplete),
 		uintptr(flags),
-		uintptr(unsafe.Pointer(sig)),
+		uintptr(sig),
 		uintptr(sz),
 	)
 	if errno != 0 {

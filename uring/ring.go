@@ -3,7 +3,6 @@ package uring
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -210,7 +209,7 @@ func (r *URing) getCQEvents(params getParams) (cqe *CQEvent, err error) {
 		}
 
 		var consumed uint
-		consumed, err = sysEnter2(r.fd, params.submit, params.waitNr, flags, (*unix.Sigset_t)(params.arg), params.sz)
+		consumed, err = sysEnter2(r.fd, params.submit, params.waitNr, flags, params.arg, params.sz)
 
 		if err != nil {
 			break
