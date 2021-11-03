@@ -198,6 +198,7 @@ type LinkTimeoutOp struct {
 }
 
 //LinkTimeout - timeout operation for linked command.
+//Note: previous queued SQE must be queued with flag SqeIOLinkFlag.
 func LinkTimeout(duration time.Duration) *LinkTimeoutOp {
 	return &LinkTimeoutOp{
 		dur: duration,

@@ -280,7 +280,7 @@ func recvG(t *testing.T, port int, tc linkTestCase, syncChan chan struct{}) {
 
 	syncChan <- struct{}{}
 
-	err = ring.QueueSQE(Accept(listenerFd, 0), 1<<2, 1)
+	err = ring.QueueSQE(Accept(listenerFd, 0), SqeIOLinkFlag, 1)
 	require.NoError(t, err)
 
 	err = ring.QueueSQE(LinkTimeout(tc.timeout), 0, 2)

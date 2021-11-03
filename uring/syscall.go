@@ -36,6 +36,16 @@ const (
 	sysRingRegisterProbe = 8
 )
 
+// SQE flags
+const (
+	SqeFixedFileFlag       uint8 = 1 << 0
+	SqeIODrainFlag         uint8 = 1 << 1
+	SqeIOLinkFlag          uint8 = 1 << 2
+	SqeIOHardLinkFlag      uint8 = 1 << 3
+	SqeAsyncFlag           uint8 = 1 << 4
+	SqeBufferSelectBitFlag uint8 = 1 << 5
+)
+
 const (
 	libUserDataTimeout = math.MaxUint64
 )
