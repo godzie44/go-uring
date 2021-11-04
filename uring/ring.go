@@ -63,16 +63,16 @@ type URing struct {
 
 var ErrRingSetup = errors.New("ring setup")
 
-type URingOption func(params *ringParams)
+type SetupOption func(params *ringParams)
 
-func WithCQSize(sz uint32) URingOption {
+func WithCQSize(sz uint32) SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupCQSize
 		params.cqEntries = sz
 	}
 }
 
-func New(entries uint32, opts ...URingOption) (*URing, error) {
+func New(entries uint32, opts ...SetupOption) (*URing, error) {
 	if entries > MaxEntries {
 		return nil, ErrRingSetup
 	}
