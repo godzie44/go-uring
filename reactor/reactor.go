@@ -136,6 +136,10 @@ func (r *Reactor) ExecuteAndWait(op uring.Operation) (uring.CQEvent, error) {
 }
 
 func (r *Reactor) ExecuteAndWaitWithDeadline(op uring.Operation, deadline time.Time) (uring.CQEvent, error) {
+	if deadline.IsZero() {
+		return r.ExecuteAndWait(op)
+	}
+
 	opNonce := r.nextNonce()
 	timeoutNonce := r.nextNonce()
 
