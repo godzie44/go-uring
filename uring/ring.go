@@ -56,8 +56,6 @@ type URing struct {
 	cqRing *cq
 	sqRing *sq
 
-	result chan string
-
 	tailLock sync.Mutex
 }
 
@@ -88,14 +86,13 @@ func New(entries uint32, opts ...SetupOption) (*URing, error) {
 		return nil, err
 	}
 
-	r := &URing{Params: &params, fd: fd, sqRing: &sq{}, cqRing: &cq{}, result: make(chan string)}
+	r := &URing{Params: &params, fd: fd, sqRing: &sq{}, cqRing: &cq{}}
 	err = r.allocRing(&params)
 
 	return r, err
 }
 
 func (r *URing) Close() error {
-	close(r.result)
 	err := r.freeRing()
 	return joinErr(err, syscall.Close(r.fd))
 }
