@@ -59,7 +59,7 @@ func New(ring *uring.URing, opts ...ReactorOption) *Reactor {
 		ring:         ring,
 		result:       make(chan Result),
 		commands:     map[uint64]*command{},
-		tickDuration: time.Millisecond * 1000,
+		tickDuration: time.Millisecond * 100,
 		currentNonce: 100,
 	}
 
@@ -70,35 +70,40 @@ func New(ring *uring.URing, opts ...ReactorOption) *Reactor {
 	return r
 }
 
+const cqeBatchSize = 1 << 7
+
 func (r *Reactor) Run(ctx context.Context) error {
 	defer close(r.result)
 
 	for {
-		cqe, err := r.ring.WaitCQEventsWithTimeout(1, r.tickDuration)
+		_, err := r.ring.WaitCQEventsWithTimeout(1, r.tickDuration)
 		if err == syscall.EAGAIN || err == syscall.EINTR {
 			runtime.Gosched()
 			continue
 		}
 
-		if err == nil {
-			//r.result <- Result{op: r.commands[cqe.UserData], err: cqe.Error()}
-			r.ring.SeenCQE(cqe)
-
-			r.commandsMu.Lock()
-			chn := r.commands[cqe.UserData].cqe
-
-			chn <- uring.CQEvent{
-				UserData: cqe.UserData,
-				Res:      cqe.Res,
-				Flags:    cqe.Flags,
-			}
-			delete(r.commands, cqe.UserData)
-
-			r.commandsMu.Unlock()
-		}
-
 		if err != nil && err != syscall.ETIME {
 			log.Print("err ", err.Error())
+			continue
+		}
+
+		for cqes := r.ring.PeekCQEventBatch(cqeBatchSize); len(cqes) > 0; cqes = r.ring.PeekCQEventBatch(cqeBatchSize) {
+			for _, cqe := range cqes {
+				//r.result <- Result{op: r.commands[cqe.UserData], err: cqe.Error()}
+				r.ring.SeenCQE(cqe)
+
+				r.commandsMu.Lock()
+				chn := r.commands[cqe.UserData].cqe
+
+				chn <- uring.CQEvent{
+					UserData: cqe.UserData,
+					Res:      cqe.Res,
+					Flags:    cqe.Flags,
+				}
+				delete(r.commands, cqe.UserData)
+
+				r.commandsMu.Unlock()
+			}
 		}
 
 		select {
