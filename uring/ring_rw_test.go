@@ -12,7 +12,7 @@ import (
 const readFileName = "../go.mod"
 
 func TestSingleReadV(t *testing.T) {
-	r, err := NewRing(8)
+	r, err := New(8)
 	require.NoError(t, err)
 	defer r.Close()
 
@@ -38,7 +38,7 @@ func TestSingleReadV(t *testing.T) {
 }
 
 func TestMultipleReadV(t *testing.T) {
-	r, err := NewRing(8)
+	r, err := New(8)
 	require.NoError(t, err)
 	defer r.Close()
 
@@ -70,7 +70,7 @@ func TestMultipleReadV(t *testing.T) {
 }
 
 func TestSingleWriteV(t *testing.T) {
-	ring, err := NewRing(8)
+	ring, err := New(8)
 	require.NoError(t, err)
 	defer ring.Close()
 

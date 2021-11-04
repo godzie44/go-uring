@@ -54,7 +54,7 @@ const sendData = "hello world"
 
 // Test that IORING_OP_ACCEPT works.
 func TestAccept(t *testing.T) {
-	ring, err := NewRing(64)
+	ring, err := New(64)
 	require.NoError(t, err)
 	defer ring.Close()
 
@@ -143,7 +143,7 @@ func TestAcceptCancel(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		ring, err := NewRing(32)
+		ring, err := New(32)
 		require.NoError(t, err)
 
 		tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
@@ -192,7 +192,7 @@ func TestAcceptMany(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		ring, err := NewRing(uint32(2 * tc.count))
+		ring, err := New(uint32(2 * tc.count))
 		require.NoError(t, err)
 
 		listeners := make([]*net.TCPListener, 0, tc.count)
@@ -237,7 +237,7 @@ func TestAcceptLink(t *testing.T) {
 		{doConnect: true, timeout: time.Second, expected: [2]error{nil, syscall.ECANCELED}},
 	}
 
-	ring, err := NewRing(1)
+	ring, err := New(1)
 	require.NoError(t, err)
 
 	if ring.Params.FastPollFeature() {
@@ -271,7 +271,7 @@ func TestAcceptLink(t *testing.T) {
 }
 
 func recvG(t *testing.T, port int, tc linkTestCase, syncChan chan struct{}) {
-	ring, err := NewRing(8)
+	ring, err := New(8)
 	require.NoError(t, err)
 
 	tcpListener, listenerFd, err := makeTCPListener(fmt.Sprintf("0.0.0.0:%d", port))
@@ -318,7 +318,7 @@ func sendG(t *testing.T, port int, syncChan chan struct{}) {
 
 // Test that IORING_OP_ACCEPT return remote sockaddr.
 func TestAcceptAddr(t *testing.T) {
-	ring, err := NewRing(64)
+	ring, err := New(64)
 	require.NoError(t, err)
 	defer ring.Close()
 

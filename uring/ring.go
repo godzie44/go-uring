@@ -72,7 +72,7 @@ func WithCQSize(sz uint32) URingOption {
 	}
 }
 
-func NewRing(entries uint32, opts ...URingOption) (*URing, error) {
+func New(entries uint32, opts ...URingOption) (*URing, error) {
 	if entries > MaxEntries {
 		return nil, ErrRingSetup
 	}

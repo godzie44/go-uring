@@ -30,7 +30,7 @@ func TestSendRecv(t *testing.T) {
 }
 
 func send(t *testing.T) {
-	ring, err := NewRing(1)
+	ring, err := New(1)
 	require.NoError(t, err)
 	defer ring.Close()
 
@@ -53,7 +53,7 @@ func send(t *testing.T) {
 }
 
 func recv(t *testing.T, cond *sync.Cond) {
-	ring, err := NewRing(1)
+	ring, err := New(1)
 	require.NoError(t, err)
 	defer ring.Close()
 

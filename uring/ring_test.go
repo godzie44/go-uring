@@ -8,7 +8,7 @@ import (
 )
 
 func TestCreateRing(t *testing.T) {
-	r, err := NewRing(64)
+	r, err := New(64)
 	require.NoError(t, err)
 
 	err = r.Close()
@@ -28,7 +28,7 @@ func queueNOPs(r *URing, count int, offset int) (err error) {
 
 //TestCQRingReady test CQ ready.
 func TestCQRingReady(t *testing.T) {
-	ring, err := NewRing(4)
+	ring, err := New(4)
 	require.NoError(t, err)
 	defer ring.Close()
 
@@ -58,7 +58,7 @@ func TestCQRingReady(t *testing.T) {
 
 //TestCQRingFull test cq ring overflow.
 func TestCQRingFull(t *testing.T) {
-	ring, err := NewRing(4)
+	ring, err := New(4)
 	require.NoError(t, err)
 	defer ring.Close()
 
@@ -88,7 +88,7 @@ func TestCQRingFull(t *testing.T) {
 
 //TestCQRingSize test CQ ring sizing.
 func TestCQRingSize(t *testing.T) {
-	ring, err := NewRing(4, WithCQSize(64))
+	ring, err := New(4, WithCQSize(64))
 	if err == syscall.EINVAL {
 		t.Skip("Skipped, not supported on this kernel")
 		return
@@ -98,7 +98,7 @@ func TestCQRingSize(t *testing.T) {
 	assert.GreaterOrEqual(t, ring.Params.cqEntries, uint32(64))
 	require.NoError(t, ring.Close())
 
-	_, err = NewRing(4, WithCQSize(0))
+	_, err = New(4, WithCQSize(0))
 	assert.Error(t, err, "zero sized cq ring succeeded")
 }
 
@@ -116,7 +116,7 @@ func fillNOPs(r *URing) (filled int) {
 func TestRingNopAllSizes(t *testing.T) {
 	var depth uint32 = 1
 	for depth <= MaxEntries {
-		ring, err := NewRing(depth)
+		ring, err := New(depth)
 		if err == syscall.ENOMEM {
 			t.Skip("Skipped, not enough memory:", depth, "entries")
 			return
@@ -147,7 +147,7 @@ func TestRingNopAllSizes(t *testing.T) {
 
 //TestRingProbe test IORING_REGISTER_PROBE
 func TestRingProbe(t *testing.T) {
-	ring, err := NewRing(4)
+	ring, err := New(4)
 	require.NoError(t, err)
 	defer ring.Close()
 
@@ -167,7 +167,7 @@ func TestRingProbe(t *testing.T) {
 
 //TestCQPeekBatch test CQ peek-batch.
 func TestCQPeekBatch(t *testing.T) {
-	ring, err := NewRing(4)
+	ring, err := New(4)
 	require.NoError(t, err)
 	defer ring.Close()
 

@@ -11,7 +11,7 @@ import (
 
 //TestSingleTimeout test single timeout command.
 func TestSingleTimeout(t *testing.T) {
-	r, err := NewRing(8)
+	r, err := New(8)
 	require.NoError(t, err)
 	defer r.Close()
 
@@ -30,7 +30,7 @@ func TestSingleTimeout(t *testing.T) {
 
 //TestMultipleTimeout test multiple timeouts command.
 func TestMultipleTimeout(t *testing.T) {
-	r, err := NewRing(8)
+	r, err := New(8)
 	require.NoError(t, err)
 	defer r.Close()
 
@@ -69,7 +69,7 @@ ENDTEST:
 
 //TestSingleTimeoutWait test wait cq event with timeout function.
 func TestSingleTimeoutWait(t *testing.T) {
-	r, err := NewRing(8)
+	r, err := New(8)
 	require.NoError(t, err)
 	defer r.Close()
 

@@ -50,7 +50,7 @@ func main() {
 	checkErr(syscall.Bind(socket, &addr))
 	checkErr(syscall.Listen(socket, syscall.SOMAXCONN))
 
-	ring, err := uring.NewRing(uring.MaxEntries)
+	ring, err := uring.New(uring.MaxEntries)
 	checkErr(err)
 	defer ring.Close()
 

@@ -26,7 +26,7 @@ type ReactorTestSuite struct {
 }
 
 func (ts *ReactorTestSuite) SetupTest() {
-	ring, err := uring.NewRing(64)
+	ring, err := uring.New(64)
 	ts.Require().NoError(err)
 	ts.ring = ring
 
