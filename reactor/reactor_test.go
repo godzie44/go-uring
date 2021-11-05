@@ -51,7 +51,7 @@ func (ts *ReactorTestSuite) TearDownTest() {
 	ts.Require().NoError(ts.ring.Close())
 }
 
-func (ts *ReactorTestSuite) TestReactorExecuteReadVCommand() {
+func (ts *ReactorTestSuite) TestReactorExecuteReadV() {
 	f, err := os.Open("../go.mod")
 	ts.Require().NoError(err)
 	defer f.Close()
@@ -59,7 +59,7 @@ func (ts *ReactorTestSuite) TestReactorExecuteReadVCommand() {
 	op, err := uring.ReadV(f, 16)
 	ts.Require().NoError(err)
 
-	cqe, err := ts.reactor.ExecuteAndWait(op)
+	cqe, err := ts.reactor.QueueAndWait(op)
 	ts.Require().NoError(err)
 
 	reads := op
@@ -78,11 +78,29 @@ func (ts *ReactorTestSuite) TestReactorExecuteWithDeadline() {
 	defer l.Close()
 
 	acceptTime := time.Now()
-	cqe, err := ts.reactor.ExecuteAndWaitWithDeadline(uring.Accept(fd, 0), acceptTime.Add(time.Second))
+	cqe, err := ts.reactor.QueueAndWaitWithDeadline(uring.Accept(fd, 0), acceptTime.Add(time.Second))
 
-	ts.Require().Error(err, syscall.ETIME)
+	ts.Require().NoError(err)
 	ts.Require().Error(cqe.Error(), syscall.ECANCELED)
 	ts.Require().True(time.Now().Sub(acceptTime) > time.Second && time.Now().Sub(acceptTime) < time.Second+time.Millisecond*100)
+}
+
+func (ts *ReactorTestSuite) TestReactorCancelOperation() {
+	l, fd, err := makeTCPListener("0.0.0.0:8080")
+	ts.Require().NoError(err)
+	defer l.Close()
+
+	resChan := make(chan uring.CQEvent)
+	nonce, err := ts.reactor.Queue(uring.Accept(fd, 0), resChan)
+
+	go func() {
+		<-time.After(time.Second)
+		err = ts.reactor.Cancel(nonce)
+		ts.Require().NoError(err)
+	}()
+
+	cqe := <-resChan
+	ts.Require().Error(cqe.Error(), syscall.ECANCELED)
 }
 
 func TestReactor(t *testing.T) {
