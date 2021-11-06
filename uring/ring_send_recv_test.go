@@ -41,12 +41,7 @@ func send(t *testing.T) {
 	f, err := conn.(*net.UDPConn).File()
 	require.NoError(t, err)
 
-	vec := syscall.Iovec{
-		Base: &[]byte(str)[0],
-		Len:  uint64(len(str)),
-	}
-
-	require.NoError(t, ring.QueueSQE(Send(f.Fd(), vec, 0), 0, 1))
+	require.NoError(t, ring.QueueSQE(Send(f.Fd(), []byte(str), 0), 0, 1))
 
 	_, err = ring.SubmitAndWaitCQEvents(1)
 	require.NoError(t, err)
@@ -65,12 +60,7 @@ func recv(t *testing.T, cond *sync.Cond) {
 	require.NoError(t, err)
 
 	buff := make([]byte, 128)
-	vec := syscall.Iovec{
-		Base: &buff[0],
-	}
-	vec.SetLen(len(buff))
-
-	require.NoError(t, ring.QueueSQE(Recv(f.Fd(), vec, 0), 0, 2))
+	require.NoError(t, ring.QueueSQE(Recv(f.Fd(), buff, 0), 0, 2))
 
 	_, err = ring.Submit()
 	require.NoError(t, err)

@@ -128,18 +128,16 @@ func addRead(ring *uring.URing, fd int) {
 	}
 	connMap[fd].typ = READ
 
-	vec := syscall.Iovec{Base: &connMap[fd].buff.Bytes()[0], Len: uint64(connMap[fd].buff.Len())}
 	checkErr(
-		ring.QueueSQE(uring.Recv(uintptr(fd), vec, 0), 0, uint64(fd)),
+		ring.QueueSQE(uring.Recv(uintptr(fd), connMap[fd].buff.Bytes(), 0), 0, uint64(fd)),
 	)
 }
 
 func addWrite(ring *uring.URing, fd int, data []byte) {
 	connMap[fd].typ = WRITE
 
-	vec := syscall.Iovec{Base: &data[0], Len: uint64(len(data))}
 	checkErr(
-		ring.QueueSQE(uring.Send(uintptr(fd), vec, 0), 0, uint64(fd)),
+		ring.QueueSQE(uring.Send(uintptr(fd), data, 0), 0, uint64(fd)),
 	)
 }
 

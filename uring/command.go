@@ -213,41 +213,41 @@ func (op *LinkTimeoutOp) PrepSQE(sqe *SQEntry) {
 //RecvOp receive a message from a socket operation.
 type RecvOp struct {
 	fd       uintptr
-	vec      syscall.Iovec
+	buff     []byte
 	msgFlags uint32
 }
 
 //Recv receive a message from a socket.
-func Recv(socketFd uintptr, vec syscall.Iovec, msgFlags uint32) *RecvOp {
+func Recv(socketFd uintptr, buff []byte, msgFlags uint32) *RecvOp {
 	return &RecvOp{
 		fd:       socketFd,
-		vec:      vec,
+		buff:     buff,
 		msgFlags: msgFlags,
 	}
 }
 
 func (op *RecvOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opRecv, int32(op.fd), uintptr(unsafe.Pointer(op.vec.Base)), uint32(op.vec.Len), 0)
+	sqe.fill(opRecv, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), 0)
 	sqe.OpcodeFlags = op.msgFlags
 }
 
 //SendOp send a message to a socket operation.
 type SendOp struct {
 	fd       uintptr
-	vec      syscall.Iovec
+	buff     []byte
 	msgFlags uint32
 }
 
 //Send send a message to a socket.
-func Send(socketFd uintptr, vec syscall.Iovec, msgFlags uint32) *SendOp {
+func Send(socketFd uintptr, buff []byte, msgFlags uint32) *SendOp {
 	return &SendOp{
 		fd:       socketFd,
-		vec:      vec,
+		buff:     buff,
 		msgFlags: msgFlags,
 	}
 }
 
 func (op *SendOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opSend, int32(op.fd), uintptr(unsafe.Pointer(op.vec.Base)), uint32(op.vec.Len), 0)
+	sqe.fill(opSend, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), 0)
 	sqe.OpcodeFlags = op.msgFlags
 }
