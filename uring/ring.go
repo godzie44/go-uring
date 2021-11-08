@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -55,8 +54,6 @@ type URing struct {
 
 	cqRing *cq
 	sqRing *sq
-
-	tailLock sync.Mutex
 }
 
 var ErrRingSetup = errors.New("ring setup")
@@ -67,6 +64,12 @@ func WithCQSize(sz uint32) SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupCQSize
 		params.cqEntries = sz
+	}
+}
+
+func WithIOPoll() SetupOption {
+	return func(params *ringParams) {
+		params.flags = params.flags | setupIOPoll
 	}
 }
 
@@ -100,9 +103,6 @@ func (r *URing) Close() error {
 var ErrSQRingOverflow = errors.New("sq ring overflow")
 
 func (r *URing) NextSQE() (entry *SQEntry, err error) {
-	r.tailLock.Lock()
-	defer r.tailLock.Unlock()
-
 	head := atomic.LoadUint32(r.sqRing.kHead)
 	next := r.sqRing.sqeTail + 1
 
@@ -136,16 +136,18 @@ func (r *URing) QueueSQE(op Operation, flags uint8, userData uint64) error {
 func (r *URing) Submit() (uint, error) {
 	flushed := r.flushSQ()
 
-	consumed, err := sysEnter(r.fd, flushed, 0, 0, nil)
+	var flags uint32
+	if r.Params.flags&setupIOPoll == 1 {
+		flags |= sysRingEnterGetEvents
+	}
+
+	consumed, err := sysEnter(r.fd, flushed, 0, flags, nil)
 	return consumed, err
 }
 
 var _sizeOfUint32 = unsafe.Sizeof(uint32(0))
 
 func (r *URing) flushSQ() uint32 {
-	r.tailLock.Lock()
-	defer r.tailLock.Unlock()
-
 	mask := *r.sqRing.kRingMask
 	tail := atomic.LoadUint32(r.sqRing.kTail)
 	subCnt := r.sqRing.sqeTail - r.sqRing.sqeHead

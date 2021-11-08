@@ -42,9 +42,18 @@ type (
 	}
 )
 
+// io_uring_setup() flags
 const (
-	setupCQSize uint32 = 1 << 3 /* app defines CQ size */
+	setupIOPoll    uint32 = 1 << 0
+	setupSQPoll    uint32 = 1 << 1
+	setupSQAff     uint32 = 1 << 2
+	setupCQSize    uint32 = 1 << 3 /* app defines CQ size */
+	setupClamp     uint32 = 1 << 4
+	setupAttachWQ  uint32 = 1 << 5
+	setupRDisabled uint32 = 1 << 6
+)
 
+const (
 	cqRingOffset uint64 = 0x8000000
 	sqesOffset   uint64 = 0x10000000
 )
