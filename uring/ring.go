@@ -129,6 +129,7 @@ func (r *URing) NextSQE() (entry *SQEntry, err error) {
 
 type Operation interface {
 	PrepSQE(*SQEntry)
+	Code() OpCode
 }
 
 func (r *URing) QueueSQE(op Operation, flags uint8, userData uint64) error {

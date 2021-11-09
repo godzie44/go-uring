@@ -107,7 +107,7 @@ type SQEntry struct {
 }
 
 //go:uintptrescapes
-func (sqe *SQEntry) fill(op opcode, fd int32, addr uintptr, len uint32, offset uint64) {
+func (sqe *SQEntry) fill(op OpCode, fd int32, addr uintptr, len uint32, offset uint64) {
 	sqe.OpCode = uint8(op)
 	sqe.Flags = 0
 	sqe.IoPrio = 0
