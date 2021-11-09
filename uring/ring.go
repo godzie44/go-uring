@@ -101,6 +101,10 @@ func New(entries uint32, opts ...SetupOption) (*URing, error) {
 	return r, err
 }
 
+func (r *URing) Fd() int {
+	return r.fd
+}
+
 func (r *URing) Close() error {
 	err := r.freeRing()
 	return joinErr(err, syscall.Close(r.fd))
