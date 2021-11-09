@@ -15,9 +15,9 @@ import (
 type OpCode uint8
 
 const (
-	opNop OpCode = iota
-	opReadV
-	opWriteV
+	OpNop OpCode = iota
+	OpReadV
+	OpWriteV
 	opFSync
 	opReadFixed
 	opWriteFixed
@@ -26,11 +26,11 @@ const (
 	opSyncFileRange
 	opSendMsg
 	opRecvMsg
-	opTimeout
+	OpTimeout
 	opTimeoutRemove
-	opAccept
-	opAsyncCancel
-	opLinkTimeout
+	OpAccept
+	OpAsyncCancel
+	OpLinkTimeout
 	opConnect
 	opFAllocate
 	opOpenAt
@@ -41,8 +41,8 @@ const (
 	opWrite
 	opFAdvise
 	opMAdvise
-	opSend
-	opRecv
+	OpSend
+	OpRecv
 )
 
 //NopOp - do not perform any I/O. This is useful for testing the performance of the io_uring implementation itself.
@@ -54,11 +54,11 @@ func Nop() *NopOp {
 }
 
 func (op *NopOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opNop, -1, uintptr(unsafe.Pointer(nil)), 0, 0)
+	sqe.fill(OpNop, -1, uintptr(unsafe.Pointer(nil)), 0, 0)
 }
 
 func (op *NopOp) Code() OpCode {
-	return opNop
+	return OpNop
 }
 
 //ReadVOp vectored read operation, similar to preadv2(2).
@@ -101,11 +101,11 @@ func ReadV(file *os.File, blockSize int64) (*ReadVOp, error) {
 }
 
 func (op *ReadVOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opReadV, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), 0)
+	sqe.fill(OpReadV, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), 0)
 }
 
 func (op *ReadVOp) Code() OpCode {
-	return opRead
+	return OpReadV
 }
 
 //WriteVOp vectored write operation, similar to pwritev2(2).
@@ -128,11 +128,11 @@ func WriteV(file *os.File, bytes [][]byte, offset uint64) *WriteVOp {
 }
 
 func (op *WriteVOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opWriteV, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), op.Offset)
+	sqe.fill(OpWriteV, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), op.Offset)
 }
 
 func (op *WriteVOp) Code() OpCode {
-	return opWrite
+	return OpWriteV
 }
 
 //TimeoutOp timeout command.
@@ -149,11 +149,11 @@ func Timeout(duration time.Duration) *TimeoutOp {
 
 func (op *TimeoutOp) PrepSQE(sqe *SQEntry) {
 	spec := syscall.NsecToTimespec(op.dur.Nanoseconds())
-	sqe.fill(opTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
+	sqe.fill(OpTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
 }
 
 func (op *TimeoutOp) Code() OpCode {
-	return opTimeout
+	return OpTimeout
 }
 
 //AcceptOp accept command.
@@ -175,7 +175,7 @@ func Accept(fd uintptr, flags uint32) *AcceptOp {
 }
 
 func (op *AcceptOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opAccept, int32(op.fd), uintptr(unsafe.Pointer(op.addr)), 0, uint64(uintptr(unsafe.Pointer(&op.len))))
+	sqe.fill(OpAccept, int32(op.fd), uintptr(unsafe.Pointer(op.addr)), 0, uint64(uintptr(unsafe.Pointer(&op.len))))
 	sqe.OpcodeFlags = op.flags
 }
 
@@ -184,7 +184,7 @@ func (op *AcceptOp) Fd() int {
 }
 
 func (op *AcceptOp) Code() OpCode {
-	return opAccept
+	return OpAccept
 }
 
 func (op *AcceptOp) Addr() (net.Addr, error) {
@@ -216,12 +216,12 @@ func (op *CancelOp) SetTargetUserData(ud uint64) {
 }
 
 func (op *CancelOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opAsyncCancel, int32(-1), uintptr(op.targetUserData), 0, 0)
+	sqe.fill(OpAsyncCancel, int32(-1), uintptr(op.targetUserData), 0, 0)
 	sqe.OpcodeFlags = op.flags
 }
 
 func (op *CancelOp) Code() OpCode {
-	return opAsyncCancel
+	return OpAsyncCancel
 }
 
 //LinkTimeoutOp IORING_OP_LINK_TIMEOUT command.
@@ -239,11 +239,11 @@ func LinkTimeout(duration time.Duration) *LinkTimeoutOp {
 
 func (op *LinkTimeoutOp) PrepSQE(sqe *SQEntry) {
 	spec := syscall.NsecToTimespec(op.dur.Nanoseconds())
-	sqe.fill(opLinkTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
+	sqe.fill(OpLinkTimeout, -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
 }
 
 func (op *LinkTimeoutOp) Code() OpCode {
-	return opLinkTimeout
+	return OpLinkTimeout
 }
 
 //RecvOp receive a message from a socket operation.
@@ -267,7 +267,7 @@ func (op *RecvOp) SetBuffer(buff []byte) {
 }
 
 func (op *RecvOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opRecv, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), 0)
+	sqe.fill(OpRecv, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), 0)
 	sqe.OpcodeFlags = op.msgFlags
 }
 
@@ -276,7 +276,7 @@ func (op *RecvOp) Fd() int {
 }
 
 func (op *RecvOp) Code() OpCode {
-	return opRecv
+	return OpRecv
 }
 
 //SendOp send a message to a socket operation.
@@ -300,7 +300,7 @@ func (op *SendOp) SetBuffer(buff []byte) {
 }
 
 func (op *SendOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(opSend, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), 0)
+	sqe.fill(OpSend, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), 0)
 	sqe.OpcodeFlags = op.msgFlags
 }
 
@@ -309,5 +309,5 @@ func (op *SendOp) Fd() int {
 }
 
 func (op *SendOp) Code() OpCode {
-	return opSend
+	return OpSend
 }

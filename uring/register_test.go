@@ -23,9 +23,9 @@ func TestProbe(t *testing.T) {
 	assert.NotEqual(t, 0, probe.lastOp)
 	assert.NotEqual(t, 0, probe.ops)
 
-	assert.NotEqual(t, 0, probe.GetOP(int(opNop)).Flags&OpSupportedFlag, "NOP not supported")
-	assert.NotEqual(t, 0, probe.GetOP(int(opReadV)).Flags&OpSupportedFlag, "READV not supported")
-	assert.NotEqual(t, 0, probe.GetOP(int(opWriteV)).Flags&OpSupportedFlag, "WRITEV not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(OpNop)).Flags&OpSupportedFlag, "NOP not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(OpReadV)).Flags&OpSupportedFlag, "READV not supported")
+	assert.NotEqual(t, 0, probe.GetOP(int(OpWriteV)).Flags&OpSupportedFlag, "WRITEV not supported")
 }
 
 //TestIOWQMaxWorkers test IORING_REGISTER_IOWQ_MAX_WORKERS
