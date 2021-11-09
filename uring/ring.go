@@ -101,6 +101,34 @@ func New(entries uint32, opts ...SetupOption) (*Ring, error) {
 	return r, err
 }
 
+type Defer func() error
+
+func CreateMany(count int, entries uint32, opts ...SetupOption) ([]*Ring, Defer, error) {
+	var defers = map[int]func() error{}
+	var rings []*Ring
+	for i := 0; i < count; i++ {
+		r, err := New(entries, opts...)
+		if err != nil {
+			for _, closeFn := range defers {
+				closeFn()
+			}
+			return nil, nil, err
+		}
+		defers[r.fd] = r.Close
+		rings = append(rings, r)
+	}
+
+	return rings, func() (err error) {
+		for fd, closeFn := range defers {
+			cErr := closeFn()
+			if cErr != nil {
+				err = fmt.Errorf("%w, close ring: %d error: %s", err, fd, cErr.Error())
+			}
+		}
+		return err
+	}, nil
+}
+
 func (r *Ring) Fd() int {
 	return r.fd
 }

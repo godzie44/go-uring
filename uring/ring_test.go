@@ -11,8 +11,27 @@ func TestCreateRing(t *testing.T) {
 	r, err := New(64)
 	require.NoError(t, err)
 
+	assert.NotEqual(t, 0, r.Fd())
+
 	err = r.Close()
 	require.NoError(t, err)
+}
+
+func TestCreateManyRings(t *testing.T) {
+	rings, closeFn, err := CreateMany(4, 64)
+	require.NoError(t, err)
+
+	for _, r := range rings {
+		assert.NotEqual(t, 0, r.Fd())
+	}
+
+	err = closeFn()
+	require.NoError(t, err)
+
+	for _, r := range rings {
+		err = syscall.Close(r.Fd())
+		assert.ErrorIs(t, err, syscall.EBADF)
+	}
 }
 
 func queueNOPs(r *Ring, count int, offset int) (err error) {
