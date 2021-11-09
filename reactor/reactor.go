@@ -38,7 +38,7 @@ type command struct {
 }
 
 type Reactor struct {
-	ring *uring.URing
+	ring *uring.Ring
 
 	queueMy sync.Mutex
 
@@ -69,7 +69,7 @@ func WithTickTimeout(duration time.Duration) ReactorOption {
 	}
 }
 
-func New(ring *uring.URing, opts ...ReactorOption) *Reactor {
+func New(ring *uring.Ring, opts ...ReactorOption) *Reactor {
 	r := &Reactor{
 		ring:         ring,
 		commands:     map[uint64]command{},
@@ -113,7 +113,7 @@ func (r *Reactor) Run(ctx context.Context) error {
 			continue
 		}
 
-		for n := r.ring.PeekCQEventBatchZeroAlloc(cqeBuff); n > 0; n = r.ring.PeekCQEventBatchZeroAlloc(cqeBuff) {
+		for n := r.ring.PeekCQEventBatch(cqeBuff); n > 0; n = r.ring.PeekCQEventBatch(cqeBuff) {
 			for i := 0; i < n; i++ {
 				cqe := cqeBuff[i]
 

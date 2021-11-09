@@ -98,7 +98,7 @@ func TestAccept(t *testing.T) {
 	}
 }
 
-func acceptConnection(t *testing.T, ring *URing, fd uintptr) (cfd uintptr, err error) {
+func acceptConnection(t *testing.T, ring *Ring, fd uintptr) (cfd uintptr, err error) {
 	err = ring.QueueSQE(Accept(fd, 0), 0, 0)
 	require.NoError(t, err)
 
@@ -113,7 +113,7 @@ func acceptConnection(t *testing.T, ring *URing, fd uintptr) (cfd uintptr, err e
 	return uintptr(cqe.Res), cqe.Error()
 }
 
-func queueSend(ring *URing, fd uintptr, buff []byte) error {
+func queueSend(ring *Ring, fd uintptr, buff []byte) error {
 	op := &WriteVOp{FD: fd, IOVecs: []syscall.Iovec{
 		{
 			Base: &buff[0],
@@ -123,7 +123,7 @@ func queueSend(ring *URing, fd uintptr, buff []byte) error {
 	return ring.QueueSQE(op, 0, 1)
 }
 
-func queueRecv(ring *URing, fd uintptr, buff []byte) error {
+func queueRecv(ring *Ring, fd uintptr, buff []byte) error {
 	op := &ReadVOp{FD: fd, IOVecs: []syscall.Iovec{
 		{
 			Base: &buff[0],

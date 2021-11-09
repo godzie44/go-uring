@@ -83,7 +83,7 @@ func main() {
 	}
 }
 
-func handleEvents(ring *uring.URing, events []*uring.CQEvent) {
+func handleEvents(ring *uring.Ring, events []*uring.CQEvent) {
 	for _, cqe := range events {
 		info := connMap[int(cqe.UserData)]
 		switch info.typ {
@@ -115,13 +115,13 @@ var buffPool = sync.Pool{New: func() interface{} {
 	return bytes.NewBuffer(make([]byte, 2048))
 }}
 
-func addAccept(ring *uring.URing, fd int) {
+func addAccept(ring *uring.Ring, fd int) {
 	checkErr(
 		ring.QueueSQE(uring.Accept(uintptr(fd), 0), 0, uint64(fd)),
 	)
 }
 
-func addRead(ring *uring.URing, fd int) {
+func addRead(ring *uring.Ring, fd int) {
 	if _, exists := connMap[fd]; !exists {
 		connMap[fd] = &connInfo{
 			fd:   fd,
@@ -135,7 +135,7 @@ func addRead(ring *uring.URing, fd int) {
 	)
 }
 
-func addWrite(ring *uring.URing, fd int, data []byte) {
+func addWrite(ring *uring.Ring, fd int, data []byte) {
 	connMap[fd].typ = WRITE
 
 	checkErr(

@@ -30,7 +30,7 @@ func (p *Probe) GetOP(n int) *probeOp {
 	return &p.ops[n]
 }
 
-func (r *URing) Probe() (*Probe, error) {
+func (r *Ring) Probe() (*Probe, error) {
 	probe := &Probe{}
 	//err := sysRegisterProbe(r.fd, probe, 256)
 	err := sysRegister(r.fd, sysRingRegisterProbe, unsafe.Pointer(probe), 256)
@@ -38,7 +38,7 @@ func (r *URing) Probe() (*Probe, error) {
 	return probe, err
 }
 
-func (r *URing) SetIOWQMaxWorkers(count int) error {
+func (r *Ring) SetIOWQMaxWorkers(count int) error {
 	err := sysRegister(r.fd, sysRingRegisterIOWQMaxWorkers, unsafe.Pointer(&count), 2)
 	return err
 }

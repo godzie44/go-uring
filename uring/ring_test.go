@@ -15,7 +15,7 @@ func TestCreateRing(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func queueNOPs(r *URing, count int, offset int) (err error) {
+func queueNOPs(r *Ring, count int, offset int) (err error) {
 	for i := 0; i < count; i++ {
 		err = r.QueueSQE(Nop(), 0, uint64(i+offset))
 		if err != nil {
@@ -102,7 +102,7 @@ func TestCQRingSize(t *testing.T) {
 	assert.Error(t, err, "zero sized cq ring succeeded")
 }
 
-func fillNOPs(r *URing) (filled int) {
+func fillNOPs(r *Ring) (filled int) {
 	for {
 		if err := r.QueueSQE(Nop(), 0, 0); err == ErrSQRingOverflow {
 			break

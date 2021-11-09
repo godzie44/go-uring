@@ -82,7 +82,7 @@ func (p *ringParams) ExtArgFeature() bool {
 	return p.features&featExtArg != 0
 }
 
-func (r *URing) allocRing(params *ringParams) error {
+func (r *Ring) allocRing(params *ringParams) error {
 	r.sqRing.ringSize = uint64(params.sqOffset.array) + uint64(params.sqEntries*(uint32)(unsafe.Sizeof(uint32(0))))
 	r.cqRing.ringSize = uint64(params.cqOffset.cqes) + uint64(params.cqEntries*(uint32)(unsafe.Sizeof(CQEvent{})))
 
@@ -143,7 +143,7 @@ func (r *URing) allocRing(params *ringParams) error {
 	return nil
 }
 
-func (r *URing) freeRing() (err error) {
+func (r *Ring) freeRing() (err error) {
 	err = syscall.Munmap(r.sqRing.buff)
 	if r.cqRing.buff != nil && &r.cqRing.buff[0] != &r.sqRing.buff[0] {
 		err = joinErr(err, syscall.Munmap(r.cqRing.buff))

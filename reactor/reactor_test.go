@@ -18,7 +18,7 @@ import (
 
 type ReactorTestSuite struct {
 	suite.Suite
-	ring    *uring.URing
+	ring    *uring.Ring
 	reactor *Reactor
 
 	stopReactor context.CancelFunc

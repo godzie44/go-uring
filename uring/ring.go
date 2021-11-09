@@ -47,7 +47,7 @@ func (c *cq) readyCount() uint32 {
 
 const MaxEntries uint32 = 1 << 15
 
-type URing struct {
+type Ring struct {
 	fd int
 
 	Params *ringParams
@@ -79,7 +79,7 @@ func WithIOWQMaxWorkers(count int) SetupOption {
 	}
 }
 
-func New(entries uint32, opts ...SetupOption) (*URing, error) {
+func New(entries uint32, opts ...SetupOption) (*Ring, error) {
 	if entries > MaxEntries {
 		return nil, ErrRingSetup
 	}
@@ -95,24 +95,24 @@ func New(entries uint32, opts ...SetupOption) (*URing, error) {
 		return nil, err
 	}
 
-	r := &URing{Params: &params, fd: fd, sqRing: &sq{}, cqRing: &cq{}}
+	r := &Ring{Params: &params, fd: fd, sqRing: &sq{}, cqRing: &cq{}}
 	err = r.allocRing(&params)
 
 	return r, err
 }
 
-func (r *URing) Fd() int {
+func (r *Ring) Fd() int {
 	return r.fd
 }
 
-func (r *URing) Close() error {
+func (r *Ring) Close() error {
 	err := r.freeRing()
 	return joinErr(err, syscall.Close(r.fd))
 }
 
 var ErrSQRingOverflow = errors.New("sq ring overflow")
 
-func (r *URing) NextSQE() (entry *SQEntry, err error) {
+func (r *Ring) NextSQE() (entry *SQEntry, err error) {
 	head := atomic.LoadUint32(r.sqRing.kHead)
 	next := r.sqRing.sqeTail + 1
 
@@ -132,7 +132,7 @@ type Operation interface {
 	Code() OpCode
 }
 
-func (r *URing) QueueSQE(op Operation, flags uint8, userData uint64) error {
+func (r *Ring) QueueSQE(op Operation, flags uint8, userData uint64) error {
 	sqe, err := r.NextSQE()
 	if err != nil {
 		return err
@@ -144,7 +144,7 @@ func (r *URing) QueueSQE(op Operation, flags uint8, userData uint64) error {
 	return nil
 }
 
-func (r *URing) Submit() (uint, error) {
+func (r *Ring) Submit() (uint, error) {
 	flushed := r.flushSQ()
 
 	var flags uint32
@@ -158,7 +158,7 @@ func (r *URing) Submit() (uint, error) {
 
 var _sizeOfUint32 = unsafe.Sizeof(uint32(0))
 
-func (r *URing) flushSQ() uint32 {
+func (r *Ring) flushSQ() uint32 {
 	mask := *r.sqRing.kRingMask
 	tail := atomic.LoadUint32(r.sqRing.kTail)
 	subCnt := r.sqRing.sqeTail - r.sqRing.sqeHead
@@ -185,7 +185,7 @@ type getParams struct {
 	sz             int
 }
 
-func (r *URing) getCQEvents(params getParams) (cqe *CQEvent, err error) {
+func (r *Ring) getCQEvents(params getParams) (cqe *CQEvent, err error) {
 	for {
 		var needEnter = false
 		var cqOverflowFlush = false
@@ -233,7 +233,7 @@ func (r *URing) getCQEvents(params getParams) (cqe *CQEvent, err error) {
 	return cqe, err
 }
 
-func (r *URing) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cqe *CQEvent, err error) {
+func (r *Ring) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cqe *CQEvent, err error) {
 	if r.Params.ExtArgFeature() {
 		ts := syscall.NsecToTimespec(timeout.Nanoseconds())
 		arg := newGetEventsArg(uintptr(unsafe.Pointer(nil)), numSig/8, uintptr(unsafe.Pointer(&ts)))
@@ -280,7 +280,7 @@ func (r *URing) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cq
 	})
 }
 
-func (r *URing) WaitCQEvents(count uint32) (cqe *CQEvent, err error) {
+func (r *Ring) WaitCQEvents(count uint32) (cqe *CQEvent, err error) {
 	return r.getCQEvents(getParams{
 		submit: 0,
 		waitNr: count,
@@ -289,7 +289,7 @@ func (r *URing) WaitCQEvents(count uint32) (cqe *CQEvent, err error) {
 	})
 }
 
-func (r *URing) SubmitAndWaitCQEvents(count uint32) (cqe *CQEvent, err error) {
+func (r *Ring) SubmitAndWaitCQEvents(count uint32) (cqe *CQEvent, err error) {
 	return r.getCQEvents(getParams{
 		submit: r.flushSQ(),
 		waitNr: count,
@@ -298,19 +298,19 @@ func (r *URing) SubmitAndWaitCQEvents(count uint32) (cqe *CQEvent, err error) {
 	})
 }
 
-func (r *URing) PeekCQE() (*CQEvent, error) {
+func (r *Ring) PeekCQE() (*CQEvent, error) {
 	return r.WaitCQEvents(0)
 }
 
-func (r *URing) SeenCQE(cqe *CQEvent) {
+func (r *Ring) SeenCQE(cqe *CQEvent) {
 	r.AdvanceCQ(1)
 }
 
-func (r *URing) AdvanceCQ(n uint32) {
+func (r *Ring) AdvanceCQ(n uint32) {
 	atomic.AddUint32(r.cqRing.kHead, n)
 }
 
-func (r *URing) peekCQEvent() (uint32, *CQEvent, error) {
+func (r *Ring) peekCQEvent() (uint32, *CQEvent, error) {
 	mask := *r.cqRing.kRingMask
 	var cqe *CQEvent
 	var available uint32
@@ -344,7 +344,7 @@ func (r *URing) peekCQEvent() (uint32, *CQEvent, error) {
 	return available, cqe, err
 }
 
-func (r *URing) peekCQEventBatch(buff []*CQEvent) int {
+func (r *Ring) peekCQEventBatch(buff []*CQEvent) int {
 	ready := r.cqRing.readyCount()
 	count := min(uint32(len(buff)), ready)
 
@@ -367,7 +367,7 @@ func min(a, b uint32) uint32 {
 	return b
 }
 
-func (r *URing) PeekCQEventBatch(buff []*CQEvent) int {
+func (r *Ring) PeekCQEventBatch(buff []*CQEvent) int {
 	n := r.peekCQEventBatch(buff)
 	if n == 0 {
 		if r.sqRing.cqNeedFlush() {
