@@ -344,35 +344,39 @@ func (r *URing) peekCQEvent() (uint32, *CQEvent, error) {
 	return available, cqe, err
 }
 
-func (r *URing) peekCQEventBatch(count uint32) (result []*CQEvent) {
+func (r *URing) peekCQEventBatch(buff []*CQEvent) int {
 	ready := r.cqRing.readyCount()
+	count := min(uint32(len(buff)), ready)
+
 	if ready != 0 {
 		head := atomic.LoadUint32(r.cqRing.kHead)
 		mask := atomic.LoadUint32(r.cqRing.kRingMask)
 
-		if count > ready {
-			count = ready
-		}
-
 		last := head + count
-		result = make([]*CQEvent, 0, last-head)
-		for ; head != last; head++ {
-			result = append(result, (*CQEvent)(unsafe.Add(unsafe.Pointer(r.cqRing.cqeBuff), uintptr(head&mask)*unsafe.Sizeof(CQEvent{}))))
+		for i := 0; head != last; head, i = head+1, i+1 {
+			buff[i] = (*CQEvent)(unsafe.Add(unsafe.Pointer(r.cqRing.cqeBuff), uintptr(head&mask)*unsafe.Sizeof(CQEvent{})))
 		}
 	}
-	return result
+	return int(count)
 }
 
-func (r *URing) PeekCQEventBatch(count uint32) []*CQEvent {
-	result := r.peekCQEventBatch(count)
-	if result == nil {
+func min(a, b uint32) uint32 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (r *URing) PeekCQEventBatch(buff []*CQEvent) int {
+	n := r.peekCQEventBatch(buff)
+	if n == 0 {
 		if r.sqRing.cqNeedFlush() {
 			_, _ = sysEnter(r.fd, 0, 0, sysRingEnterGetEvents, nil)
-			result = r.peekCQEventBatch(count)
+			n = r.peekCQEventBatch(buff)
 		}
 	}
 
-	return result
+	return n
 }
 
 func joinErr(err1, err2 error) error {

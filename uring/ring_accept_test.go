@@ -81,9 +81,10 @@ func TestAccept(t *testing.T) {
 	_, err = ring.SubmitAndWaitCQEvents(2)
 	require.NoError(t, err)
 
-	events := ring.PeekCQEventBatch(2)
-	require.Len(t, events, 2)
-	for _, cqe := range events {
+	events := make([]*CQEvent, 2)
+	eventCnt := ring.PeekCQEventBatch(events)
+	require.Equal(t, 2, eventCnt)
+	for _, cqe := range events[:eventCnt] {
 		assert.NoError(t, cqe.Error())
 
 		switch cqe.UserData {

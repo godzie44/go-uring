@@ -64,6 +64,8 @@ func main() {
 	}
 	addAccept(ring, socket)
 
+	events := make([]*uring.CQEvent, syscall.SOMAXCONN)
+
 	for {
 		if _, err := ring.Submit(); err != nil {
 			checkErr(err)
@@ -76,8 +78,8 @@ func main() {
 
 		checkErr(err)
 
-		events := ring.PeekCQEventBatch(syscall.SOMAXCONN)
-		handleEvents(ring, events)
+		n := ring.PeekCQEventBatch(events)
+		handleEvents(ring, events[:n])
 	}
 }
 

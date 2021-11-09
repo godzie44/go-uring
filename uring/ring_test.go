@@ -151,24 +151,26 @@ func TestCQPeekBatch(t *testing.T) {
 	require.NoError(t, err)
 	defer ring.Close()
 
-	CQEs := ring.PeekCQEventBatch(4)
-	assert.Len(t, CQEs, 0)
+	cqeBuff := make([]*CQEvent, 128)
+
+	cnt := ring.PeekCQEventBatch(cqeBuff)
+	assert.Equal(t, 0, cnt)
 
 	require.NoError(t, queueNOPs(ring, 4, 0))
 
-	CQEs = ring.PeekCQEventBatch(4)
-	assert.Len(t, CQEs, 4)
+	cnt = ring.PeekCQEventBatch(cqeBuff)
+	assert.Equal(t, 4, cnt)
 	for i := 0; i < 4; i++ {
-		assert.Equal(t, uint64(i), CQEs[i].UserData)
+		assert.Equal(t, uint64(i), cqeBuff[i].UserData)
 	}
 
 	require.NoError(t, queueNOPs(ring, 4, 4))
 
 	ring.AdvanceCQ(4)
-	CQEs = ring.PeekCQEventBatch(4)
-	assert.Len(t, CQEs, 4)
+	cnt = ring.PeekCQEventBatch(cqeBuff)
+	assert.Equal(t, 4, cnt)
 	for i := 0; i < 4; i++ {
-		assert.Equal(t, uint64(i+4), CQEs[i].UserData)
+		assert.Equal(t, uint64(i+4), cqeBuff[i].UserData)
 	}
 
 	ring.AdvanceCQ(4)
