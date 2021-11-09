@@ -29,13 +29,6 @@ const (
 	sysRingEnterExtArg    uint32 = 1 << 3
 )
 
-// io_uring_register(2) opcodes and arguments
-const (
-	opSupported uint32 = 1 << 0
-
-	sysRingRegisterProbe = 8
-)
-
 // SQE flags
 const (
 	SqeFixedFileFlag       uint8 = 1 << 0
@@ -80,13 +73,13 @@ func sysSetup(entries uint32, params *ringParams) (int, error) {
 	return int(fd), nil
 }
 
-func sysRegisterProbe(ringFD int, probe *Probe, len int) error {
+func sysRegister(ringFD int, op int, arg unsafe.Pointer, nrArgs int) error {
 	_, _, errno := syscall.Syscall6(
 		sysRingRegister,
 		uintptr(ringFD),
-		uintptr(sysRingRegisterProbe),
-		uintptr(unsafe.Pointer(probe)),
-		uintptr(len),
+		uintptr(op),
+		uintptr(arg),
+		uintptr(nrArgs),
 		0,
 		0,
 	)

@@ -73,6 +73,12 @@ func WithIOPoll() SetupOption {
 	}
 }
 
+func WithIOWQMaxWorkers(count int) SetupOption {
+	return func(params *ringParams) {
+		params.flags = params.flags | setupIOPoll
+	}
+}
+
 func New(entries uint32, opts ...SetupOption) (*URing, error) {
 	if entries > MaxEntries {
 		return nil, ErrRingSetup
@@ -362,32 +368,6 @@ func (r *URing) PeekCQEventBatch(count uint32) []*CQEvent {
 	}
 
 	return result
-}
-
-type (
-	Probe struct {
-		lastOp uint8
-		opsLen uint8
-		_res   uint16
-		_res2  [3]uint32
-		ops    [256]probeOp
-	}
-	probeOp struct {
-		Op    uint8
-		_res  uint8
-		Flags uint16
-		_res2 uint32
-	}
-)
-
-func (p *Probe) GetOP(n int) *probeOp {
-	return &p.ops[n]
-}
-
-func (r *URing) Probe() (*Probe, error) {
-	probe := &Probe{}
-	err := sysRegisterProbe(r.fd, probe, 256)
-	return probe, err
 }
 
 func joinErr(err1, err2 error) error {

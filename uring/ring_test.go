@@ -145,26 +145,6 @@ func TestRingNopAllSizes(t *testing.T) {
 	}
 }
 
-//TestRingProbe test IORING_REGISTER_PROBE
-func TestRingProbe(t *testing.T) {
-	ring, err := New(4)
-	require.NoError(t, err)
-	defer ring.Close()
-
-	probe, err := ring.Probe()
-	if err == syscall.EINVAL {
-		t.Skip("Skipped, probe not supported")
-	}
-	require.NoError(t, err)
-
-	assert.NotEqual(t, 0, probe.lastOp)
-	assert.NotEqual(t, 0, probe.ops)
-
-	assert.NotEqual(t, 0, probe.GetOP(int(opNop)).Flags&uint16(opSupported), "NOP not supported")
-	assert.NotEqual(t, 0, probe.GetOP(int(opReadV)).Flags&uint16(opSupported), "READV not supported")
-	assert.NotEqual(t, 0, probe.GetOP(int(opWriteV)).Flags&uint16(opSupported), "WRITEV not supported")
-}
-
 //TestCQPeekBatch test CQ peek-batch.
 func TestCQPeekBatch(t *testing.T) {
 	ring, err := New(4)

@@ -2,7 +2,6 @@ package uring
 
 import (
 	"context"
-	"fmt"
 	"github.com/godzie44/go-uring/uring"
 	"log"
 	"math"
@@ -17,6 +16,22 @@ const (
 	cancelNonce  = math.MaxUint64 - 1
 )
 
+type OperationCache map[string]uring.Operation
+
+func NewOperationCache() OperationCache {
+	return make(OperationCache)
+}
+
+func (o OperationCache) GetOrSet(key string, setFn func() uring.Operation) uring.Operation {
+	v, exists := o[key]
+	if !exists {
+		v = setFn()
+		o[key] = v
+	}
+
+	return v
+}
+
 type command struct {
 	op  uring.Operation
 	cqe chan<- uring.CQEvent
@@ -27,13 +42,23 @@ type Reactor struct {
 
 	queueMy sync.Mutex
 
-	commands   map[uint64]*command
+	commands   map[uint64]command
 	commandsMu sync.RWMutex
+
+	//commandsArr   [math.MaxUint32]int
+	//commandsMu sync.RWMutex
+
+	reqBuss chan sqeQueueRequest
 
 	currentNonce uint64
 	nonceLock    sync.Mutex
 
+	buffer           []sqeQueueRequest
+	submitBufferLock sync.Mutex
+
 	tickDuration time.Duration
+
+	opCache OperationCache
 }
 
 type ReactorOption func(r *Reactor)
@@ -47,9 +72,11 @@ func WithTickTimeout(duration time.Duration) ReactorOption {
 func New(ring *uring.URing, opts ...ReactorOption) *Reactor {
 	r := &Reactor{
 		ring:         ring,
-		commands:     map[uint64]*command{},
-		tickDuration: time.Millisecond * 100,
-		currentNonce: 100,
+		commands:     map[uint64]command{},
+		tickDuration: time.Millisecond,
+		currentNonce: 1,
+		opCache:      NewOperationCache(),
+		reqBuss:      make(chan sqeQueueRequest, 128),
 	}
 
 	for _, opt := range opts {
@@ -59,10 +86,22 @@ func New(ring *uring.URing, opts ...ReactorOption) *Reactor {
 	return r
 }
 
+func (r *Reactor) SubmitSQELoop() {
+	for req := range r.reqBuss {
+		_ = r.ring.QueueSQE(req.op, req.flags, req.userData)
+	}
+}
+
 const cqeBatchSize = 1 << 7
 
 func (r *Reactor) Run(ctx context.Context) error {
+	go r.SubmitSQELoop()
+
+	cqeBuff := make([]*uring.CQEvent, cqeBatchSize)
+
 	for {
+		_, _ = r.ring.Submit()
+
 		_, err := r.ring.WaitCQEventsWithTimeout(1, r.tickDuration)
 		if err == syscall.EAGAIN || err == syscall.EINTR {
 			runtime.Gosched()
@@ -74,17 +113,30 @@ func (r *Reactor) Run(ctx context.Context) error {
 			continue
 		}
 
-		for cqes := r.ring.PeekCQEventBatch(cqeBatchSize); len(cqes) > 0; cqes = r.ring.PeekCQEventBatch(cqeBatchSize) {
-			for _, cqe := range cqes {
-				r.ring.SeenCQE(cqe)
+		for n := r.ring.PeekCQEventBatchZeroAlloc(cqeBuff); n > 0; n = r.ring.PeekCQEventBatchZeroAlloc(cqeBuff) {
+			for i := 0; i < n; i++ {
+				cqe := cqeBuff[i]
 
-				r.commandsMu.Lock()
+				//r.ring.SeenCQE(cqe)
 				if cqe.UserData == timeoutNonce || cqe.UserData == cancelNonce {
-					r.commandsMu.Unlock()
 					continue
 				}
 
+				r.commandsMu.Lock()
+
 				cmd := r.commands[cqe.UserData]
+				//if !exists {
+				//	//fmt.Println("NOT EXISTING DATA", cqe.UserData, "cntr", cntr)
+				//	//_, exists := deletes[cqe.UserData]
+				//	//if exists {
+				//	//	fmt.Println("DELETE PREVIOUSLY!!!", "cntr", deletes[cqe.UserData])
+				//	//}
+				//	//fmt.Println("res", cqe.Res)
+				//	//fmt.Println("len", len(r.commands))
+				//	//fmt.Println("len", r.commands)
+				//
+				//}
+
 				cmd.cqe <- uring.CQEvent{
 					UserData: cqe.UserData,
 					Res:      cqe.Res,
@@ -94,6 +146,8 @@ func (r *Reactor) Run(ctx context.Context) error {
 
 				r.commandsMu.Unlock()
 			}
+
+			r.ring.AdvanceCQ(uint32(n))
 		}
 
 		select {
@@ -107,13 +161,11 @@ func (r *Reactor) Run(ctx context.Context) error {
 func (r *Reactor) queue(op uring.Operation, resultChan chan<- uring.CQEvent, linkedReqs ...sqeQueueRequest) (nonce uint64, err error) {
 	nonce = r.nextNonce()
 
-	cmd := &command{
+	r.commandsMu.Lock()
+	r.commands[nonce] = command{
 		op:  op,
 		cqe: resultChan,
 	}
-
-	r.commandsMu.Lock()
-	r.commands[nonce] = cmd
 	r.commandsMu.Unlock()
 
 	if len(linkedReqs) == 0 {
@@ -129,7 +181,6 @@ func (r *Reactor) queue(op uring.Operation, resultChan chan<- uring.CQEvent, lin
 		return nonce, err
 	}
 
-	_, err = r.ring.Submit()
 	return nonce, err
 }
 
@@ -178,31 +229,48 @@ type sqeQueueRequest struct {
 	userData uint64
 }
 
+func (r *Reactor) queueSQEnew(requests ...sqeQueueRequest) (err error) {
+	r.submitBufferLock.Lock()
+	defer r.submitBufferLock.Unlock()
+
+	r.buffer = append(r.buffer, requests...)
+	return nil
+}
+
 func (r *Reactor) queueSQE(requests ...sqeQueueRequest) (err error) {
-	r.queueMy.Lock()
-	defer r.queueMy.Unlock()
-
 	for _, req := range requests {
-		if qErr := r.ring.QueueSQE(req.op, req.flags, req.userData); qErr != nil {
-			if err == nil {
-				err = qErr
-			} else {
-				err = fmt.Errorf("%w; %s", err, qErr.Error())
-			}
-		}
+		r.reqBuss <- req
 	}
-
-	return err
+	return nil
+	//
+	//r.queueMy.Lock()
+	//defer r.queueMy.Unlock()
+	//
+	//for _, req := range requests {
+	//	if qErr := r.ring.QueueSQE(req.op, req.flags, req.userData); qErr != nil {
+	//		if err == nil {
+	//			err = qErr
+	//		} else {
+	//			err = fmt.Errorf("%w; %s", err, qErr.Error())
+	//		}
+	//	}
+	//}
+	//
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//_, err = r.ring.Submit()
+	//return err
 }
 
 func (r *Reactor) Cancel(nonce uint64) (err error) {
-	err = r.queueSQE(sqeQueueRequest{uring.Cancel(nonce, 0), 0, cancelNonce})
-	if err != nil {
-		return err
-	}
+	op := r.opCache.GetOrSet("cancel", func() uring.Operation {
+		return uring.Cancel(0, 0)
+	})
+	op.(*uring.CancelOp).SetTargetUserData(nonce)
 
-	_, err = r.ring.Submit()
-	return err
+	return r.queueSQE(sqeQueueRequest{op, 0, cancelNonce})
 }
 
 func (r *Reactor) nextNonce() uint64 {
