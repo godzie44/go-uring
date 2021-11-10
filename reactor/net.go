@@ -57,6 +57,7 @@ func NewNet(rings []*uring.Ring, opts ...ReactorOption) *NetworkReactor {
 
 	for _, ring := range rings {
 		loop := newRingEventLoop(ring, r.errChan, r.tickDuration)
+		loop.fdDivider = len(rings)
 		r.loops = append(r.loops, loop)
 	}
 
@@ -147,6 +148,8 @@ type connection struct {
 type registry []connection
 
 type ringEventLoop struct {
+	fdDivider int
+
 	registry registry
 
 	reqBuss      chan subSqeRequest
@@ -178,10 +181,16 @@ func newRingEventLoop(ring *uring.Ring, errChan chan<- error, tickDuration time.
 	}
 }
 
+func (loop *ringEventLoop) idxInRegistry(fd int) int {
+	return fd / loop.fdDivider
+}
+
 func (loop *ringEventLoop) addFd(fd int, acceptChan, readChan, writeChan chan uring.CQEvent) {
-	loop.registry[fd].acceptChan = acceptChan
-	loop.registry[fd].readChan = readChan
-	loop.registry[fd].writeChan = writeChan
+	idx := loop.idxInRegistry(fd)
+	loop.registry[idx].fd = fd
+	loop.registry[idx].acceptChan = acceptChan
+	loop.registry[idx].readChan = readChan
+	loop.registry[idx].writeChan = writeChan
 }
 
 type RingError struct {
@@ -235,14 +244,15 @@ func (loop *ringEventLoop) runRingReader() {
 					Res:      cqe.Res,
 					Flags:    cqe.Flags,
 				}
+				idx := loop.idxInRegistry(userData.fd())
 
 				switch userData.opcode() {
 				case uring.AcceptCode:
-					loop.registry[userData.fd()].acceptChan <- event
+					loop.registry[idx].acceptChan <- event
 				case uring.RecvCode:
-					loop.registry[userData.fd()].readChan <- event
+					loop.registry[idx].readChan <- event
 				case uring.SendCode:
-					loop.registry[userData.fd()].writeChan <- event
+					loop.registry[idx].writeChan <- event
 				}
 			}
 
