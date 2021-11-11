@@ -4,12 +4,43 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
+	"math"
 	"os"
 	"testing"
-	"unsafe"
 )
 
 const readFileName = "../go.mod"
+
+func makeVectors(file *os.File, vectorSz int64) ([][]byte, error) {
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	bytesRemaining := stat.Size()
+	blocks := int(math.Ceil(float64(bytesRemaining) / float64(vectorSz)))
+
+	buffs := make([][]byte, 0, blocks)
+	for bytesRemaining != 0 {
+		bytesToRead := bytesRemaining
+		if bytesToRead > vectorSz {
+			bytesToRead = vectorSz
+		}
+
+		buffs = append(buffs, make([]byte, bytesToRead))
+		bytesRemaining -= bytesToRead
+	}
+
+	return buffs, nil
+}
+
+func vectorsToString(vectors [][]byte) string {
+	var str string
+	for _, v := range vectors {
+		str += string(v)
+	}
+	return str
+}
 
 func TestSingleReadV(t *testing.T) {
 	r, err := New(8)
@@ -20,9 +51,10 @@ func TestSingleReadV(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	op, err := ReadV(f, 16)
+	vectors, err := makeVectors(f, 16)
 	require.NoError(t, err)
-	require.NoError(t, r.QueueSQE(op, 0, 0))
+
+	require.NoError(t, r.QueueSQE(ReadV(f, vectors, 0), 0, 0))
 
 	_, err = r.Submit()
 	require.NoError(t, err)
@@ -33,8 +65,7 @@ func TestSingleReadV(t *testing.T) {
 	expected, err := ioutil.ReadFile(readFileName)
 	require.NoError(t, err)
 
-	str := string(unsafe.Slice(op.IOVecs[0].Base, op.Size))
-	assert.Equal(t, string(expected), str)
+	assert.Equal(t, string(expected), vectorsToString(vectors))
 }
 
 func TestMultipleReadV(t *testing.T) {
@@ -46,13 +77,13 @@ func TestMultipleReadV(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	op1, err := ReadV(f, 16)
+	vectors1, err := makeVectors(f, 16)
 	require.NoError(t, err)
-	require.NoError(t, r.QueueSQE(op1, 0, 0))
+	require.NoError(t, r.QueueSQE(ReadV(f, vectors1, 0), 0, 0))
 
-	op2, err := ReadV(f, 16)
+	vectors2, err := makeVectors(f, 16)
 	require.NoError(t, err)
-	require.NoError(t, r.QueueSQE(op2, 0, 0))
+	require.NoError(t, r.QueueSQE(ReadV(f, vectors2, 0), 0, 0))
 
 	_, err = r.Submit()
 	require.NoError(t, err)
@@ -63,10 +94,8 @@ func TestMultipleReadV(t *testing.T) {
 	expected, err := ioutil.ReadFile(readFileName)
 	require.NoError(t, err)
 
-	str := string(unsafe.Slice(op1.IOVecs[0].Base, op1.Size))
-	assert.Equal(t, string(expected), str)
-	str2 := string(unsafe.Slice(op2.IOVecs[0].Base, op2.Size))
-	assert.Equal(t, string(expected), str2)
+	assert.Equal(t, string(expected), vectorsToString(vectors1))
+	assert.Equal(t, string(expected), vectorsToString(vectors2))
 }
 
 func TestSingleWriteV(t *testing.T) {

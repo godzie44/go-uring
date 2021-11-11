@@ -4,7 +4,6 @@ import (
 	"github.com/libp2p/go-sockaddr"
 	sockaddrnet "github.com/libp2p/go-sockaddr/net"
 	"golang.org/x/sys/unix"
-	"math"
 	"net"
 	"os"
 	"syscall"
@@ -43,6 +42,18 @@ const (
 	opMAdvise
 	SendCode
 	RecvCode
+	openAt2Code
+	epollCtlCode
+	spliceCode
+	ProvideBuffersCode
+	removeBuffersCode
+	teeCode
+	shutdownCode
+	renameAtCode
+	unlinkAtCode
+	mkdirAtCode
+	symlinkAtCode
+	linkAtCode
 )
 
 //NopOp - do not perform any I/O. This is useful for testing the performance of the io_uring implementation itself.
@@ -65,39 +76,21 @@ func (op *NopOp) Code() OpCode {
 type ReadVOp struct {
 	FD     uintptr
 	Size   int64
+	Offset uint64
 	IOVecs []syscall.Iovec
 }
 
 //ReadV vectored read operation, similar to preadv2(2).
-func ReadV(file *os.File, blockSize int64) (*ReadVOp, error) {
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	bytesRemaining := stat.Size()
-	blocks := int(math.Ceil(float64(bytesRemaining) / float64(blockSize)))
-
-	buff := make([]byte, bytesRemaining)
-	var idx int64
-
-	buffs := make([]syscall.Iovec, 0, blocks)
-	for bytesRemaining != 0 {
-		bytesToRead := bytesRemaining
-		if bytesToRead > blockSize {
-			bytesToRead = blockSize
+func ReadV(file *os.File, vectors [][]byte, offset uint64) *ReadVOp {
+	buffs := make([]syscall.Iovec, len(vectors))
+	for i, v := range vectors {
+		buffs[i] = syscall.Iovec{
+			Base: &v[0],
+			Len:  uint64(len(v)),
 		}
-
-		buffs = append(buffs, syscall.Iovec{
-			Base: &buff[idx],
-			Len:  uint64(bytesToRead),
-		})
-
-		idx += bytesToRead
-		bytesRemaining -= bytesToRead
 	}
 
-	return &ReadVOp{FD: file.Fd(), Size: stat.Size(), IOVecs: buffs}, nil
+	return &ReadVOp{FD: file.Fd(), IOVecs: buffs, Offset: offset}
 }
 
 func (op *ReadVOp) PrepSQE(sqe *SQEntry) {
@@ -310,4 +303,29 @@ func (op *SendOp) Fd() int {
 
 func (op *SendOp) Code() OpCode {
 	return SendCode
+}
+
+//ProvideBuffersOp .
+type ProvideBuffersOp struct {
+	buff     []byte
+	bufferId uint64
+	groupId  uint16
+}
+
+//ProvideBuffers .
+func ProvideBuffers(buff []byte, bufferId uint64, groupId uint16) *ProvideBuffersOp {
+	return &ProvideBuffersOp{
+		buff:     buff,
+		bufferId: bufferId,
+		groupId:  groupId,
+	}
+}
+
+func (op *ProvideBuffersOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(ProvideBuffersCode, int32(1), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), op.bufferId)
+	sqe.BufIG = op.groupId
+}
+
+func (op *ProvideBuffersOp) Code() OpCode {
+	return ProvideBuffersCode
 }
