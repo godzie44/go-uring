@@ -2,6 +2,7 @@ package uring
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,6 +59,21 @@ func TestAccept(t *testing.T) {
 	require.NoError(t, err)
 	defer ring.Close()
 
+	testAccept(t, ring)
+}
+
+func TestAcceptWithSQPoll(t *testing.T) {
+	ring, err := New(64, WithSQPoll(100))
+	if errors.Is(err, syscall.EPERM) {
+		t.Skipf("SQ_POLL flag require root previligies or CAP_SYS_NICE capability")
+	}
+	require.NoError(t, err)
+	defer ring.Close()
+
+	testAccept(t, ring)
+}
+
+func testAccept(t *testing.T, ring *Ring) {
 	tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
 	require.NoError(t, err)
 	defer tcpListener.Close()

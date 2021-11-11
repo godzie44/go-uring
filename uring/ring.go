@@ -73,6 +73,16 @@ func WithIOPoll() SetupOption {
 	}
 }
 
+//WithSQPoll add IORING_SETUP_SQPOLL flag.
+//Note, that process must started with root privileges
+//or the user should have the CAP_SYS_NICE capability (for kernel version >= 5.11).
+func WithSQPoll(threadIdleMs uint32) SetupOption {
+	return func(params *ringParams) {
+		params.flags = params.flags | setupSQPoll
+		params.sqThreadIdle = threadIdleMs
+	}
+}
+
 func WithIOWQMaxWorkers(count int) SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupIOPoll
@@ -176,12 +186,28 @@ func (r *Ring) Submit() (uint, error) {
 	flushed := r.flushSQ()
 
 	var flags uint32
+
+	if !r.needsEnter(&flags) {
+		return uint(flushed), nil
+	}
+
 	if r.Params.flags&setupIOPoll == 1 {
 		flags |= sysRingEnterGetEvents
 	}
 
 	consumed, err := sysEnter(r.fd, flushed, 0, flags, nil)
 	return consumed, err
+}
+
+func (r *Ring) needsEnter(flags *uint32) bool {
+	if r.Params.flags&setupSQPoll == 0 {
+		return true
+	}
+	if atomic.LoadUint32(r.sqRing.kFlags)&sqNeedWakeup != 0 {
+		*flags |= sysRingEnterSQWakeup
+		return true
+	}
+	return false
 }
 
 var _sizeOfUint32 = unsafe.Sizeof(uint32(0))
@@ -239,6 +265,7 @@ func (r *Ring) getCQEvents(params getParams) (cqe *CQEvent, err error) {
 		}
 
 		if params.submit != 0 {
+			r.needsEnter(&flags)
 			needEnter = true
 		}
 
