@@ -2,23 +2,22 @@ package uring
 
 import (
 	"context"
+	"fmt"
 	"github.com/godzie44/go-uring/uring"
 	"github.com/stretchr/testify/suite"
-	"time"
-
-	"golang.org/x/sys/unix"
 	"io/ioutil"
-	"net"
 	"os"
 	"sync"
 	"syscall"
 	"testing"
-	"unsafe"
+	"time"
 )
 
 type ReactorTestSuite struct {
 	suite.Suite
-	ring    *uring.Ring
+
+	defers uring.Defer
+
 	reactor *Reactor
 
 	stopReactor context.CancelFunc
@@ -26,29 +25,33 @@ type ReactorTestSuite struct {
 }
 
 func (ts *ReactorTestSuite) SetupTest() {
-	ring, err := uring.New(64)
+	rings, defers, err := uring.CreateMany(4, 64)
 	ts.Require().NoError(err)
-	ts.ring = ring
+	ts.defers = defers
 
-	ts.reactor = New(ts.ring)
+	ts.reactor = New(rings)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ts.stopReactor = cancel
 
 	ts.wg = &sync.WaitGroup{}
-	ts.wg.Add(1)
+	ts.wg.Add(2)
 	go func() {
 		defer ts.wg.Done()
-		err := ts.reactor.Run(ctx)
-		ts.Require().NoError(err)
+		ts.reactor.Run(ctx)
+	}()
+	go func() {
+		defer ts.wg.Done()
+		for err := range ts.reactor.Errors() {
+			panic(err)
+		}
 	}()
 }
 
 func (ts *ReactorTestSuite) TearDownTest() {
 	ts.stopReactor()
 	ts.wg.Wait()
-
-	ts.Require().NoError(ts.ring.Close())
+	ts.Require().NoError(ts.defers())
 }
 
 func (ts *ReactorTestSuite) TestReactorExecuteReadV() {
@@ -56,83 +59,64 @@ func (ts *ReactorTestSuite) TestReactorExecuteReadV() {
 	ts.Require().NoError(err)
 	defer f.Close()
 
-	op, err := uring.ReadV(f, 16)
-	ts.Require().NoError(err)
-
-	cqe, err := ts.reactor.QueueAndWait(op)
-	ts.Require().NoError(err)
-
-	reads := op
 	expected, err := ioutil.ReadFile("../go.mod")
 	ts.Require().NoError(err)
 
-	str := string(unsafe.Slice(reads.IOVecs[0].Base, reads.Size))
-	ts.Require().Equal(string(expected), str)
+	buff := make([]byte, len(expected))
+
+	resultChan := make(chan uring.CQEvent)
+	_, err = ts.reactor.Queue(uring.ReadV(f, [][]byte{buff}, 0), resultChan)
+	ts.Require().NoError(err)
+
+	cqe := <-resultChan
+
+	ts.Require().Equal(string(expected), string(buff))
 
 	ts.Require().Len(expected, int(cqe.Res))
 }
 
-func (ts *ReactorTestSuite) TestReactorExecuteWithDeadline() {
+func (ts *ReactorTestSuite) TestExecuteWithDeadline() {
 	l, fd, err := makeTCPListener("0.0.0.0:8080")
 	ts.Require().NoError(err)
 	defer l.Close()
 
+	acceptChan := make(chan uring.CQEvent)
+
 	acceptTime := time.Now()
-	cqe, err := ts.reactor.QueueAndWaitWithDeadline(uring.Accept(fd, 0), acceptTime.Add(time.Second))
+	_, err = ts.reactor.QueueWithDeadline(uring.Accept(uintptr(fd), 0), acceptTime.Add(time.Second), acceptChan)
+	ts.Require().NoError(err)
+
+	fmt.Println("wait")
+
+	cqe := <-acceptChan
+	fmt.Println(cqe)
 
 	ts.Require().NoError(err)
 	ts.Require().Error(cqe.Error(), syscall.ECANCELED)
 	ts.Require().True(time.Now().Sub(acceptTime) > time.Second && time.Now().Sub(acceptTime) < time.Second+time.Millisecond*100)
 }
 
-func (ts *ReactorTestSuite) TestReactorCancelOperation() {
+func (ts *ReactorTestSuite) TestCancelOperation() {
 	l, fd, err := makeTCPListener("0.0.0.0:8080")
 	ts.Require().NoError(err)
 	defer l.Close()
 
-	resChan := make(chan uring.CQEvent)
-	nonce, err := ts.reactor.Queue(uring.Accept(fd, 0), resChan)
+	acceptChan := make(chan uring.CQEvent)
+
+	nonce, err := ts.reactor.Queue(uring.Accept(uintptr(fd), 0), acceptChan)
+	ts.Require().NoError(err)
 
 	go func() {
 		<-time.After(time.Second)
-		err = ts.reactor.Cancel(nonce)
-		ts.Require().NoError(err)
+		ts.Require().NoError(
+			ts.reactor.Cancel(nonce),
+		)
 	}()
 
-	cqe := <-resChan
+	cqe := <-acceptChan
 	ts.Require().Error(cqe.Error(), syscall.ECANCELED)
 }
 
 func TestReactor(t *testing.T) {
 	suite.Run(t, new(ReactorTestSuite))
-}
-
-func makeTCPListener(addr string) (*net.TCPListener, uintptr, error) {
-	var fdescr uintptr
-
-	var listenConfig = net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			var err error
-			_ = c.Control(func(fd uintptr) {
-				if err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil {
-					return
-				}
-				if err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
-					return
-				}
-				if err = syscall.SetNonblock(int(fd), false); err != nil {
-					return
-				}
-				fdescr = fd
-			})
-			return err
-		},
-	}
-
-	conn, err := listenConfig.Listen(context.Background(), "tcp", addr)
-	if err != nil {
-		return nil, fdescr, err
-	}
-
-	return conn.(*net.TCPListener), fdescr, err
 }

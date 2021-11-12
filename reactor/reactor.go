@@ -2,275 +2,241 @@ package uring
 
 import (
 	"context"
+	"fmt"
 	"github.com/godzie44/go-uring/uring"
-	"log"
-	"math"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-const (
-	timeoutNonce = math.MaxUint64
-	cancelNonce  = math.MaxUint64 - 1
-)
-
-type OperationCache map[string]uring.Operation
-
-func NewOperationCache() OperationCache {
-	return make(OperationCache)
-}
-
-func (o OperationCache) GetOrSet(key string, setFn func() uring.Operation) uring.Operation {
-	v, exists := o[key]
-	if !exists {
-		v = setFn()
-		o[key] = v
-	}
-
-	return v
-}
-
-type command struct {
-	op  uring.Operation
-	cqe chan<- uring.CQEvent
-}
-
 type Reactor struct {
-	ring *uring.Ring
-
-	queueMy sync.Mutex
-
-	commands   map[uint64]command
-	commandsMu sync.RWMutex
-
-	//commandsArr   [math.MaxUint32]int
-	//commandsMu sync.RWMutex
-
-	reqBuss chan sqeQueueRequest
+	tickDuration time.Duration
+	loops        []*ringEventLoop2
 
 	currentNonce uint64
 	nonceLock    sync.Mutex
 
-	buffer           []sqeQueueRequest
-	submitBufferLock sync.Mutex
-
-	tickDuration time.Duration
-
-	opCache OperationCache
+	errChan chan error
 }
 
-type ReactorOption func(r *Reactor)
-
-func WithTickTimeout(duration time.Duration) ReactorOption {
-	return func(r *Reactor) {
-		r.tickDuration = duration
-	}
-}
-
-func New(ring *uring.Ring, opts ...ReactorOption) *Reactor {
+func New(rings []*uring.Ring, opts ...ReactorOption) *Reactor {
 	r := &Reactor{
-		ring:         ring,
-		commands:     map[uint64]command{},
-		tickDuration: time.Millisecond,
-		currentNonce: 1,
-		opCache:      NewOperationCache(),
-		reqBuss:      make(chan sqeQueueRequest, 128),
+		tickDuration: time.Millisecond * 1,
+		errChan:      make(chan error, 128),
 	}
 
-	for _, opt := range opts {
-		opt(r)
+	for _, ring := range rings {
+		loop := newRingEventLoop2(ring, r.errChan, r.tickDuration)
+		r.loops = append(r.loops, loop)
 	}
 
 	return r
 }
 
-func (r *Reactor) SubmitSQELoop() {
-	for req := range r.reqBuss {
-		_ = r.ring.QueueSQE(req.op, req.flags, req.userData)
+func (r *Reactor) Run(ctx context.Context) {
+	defer close(r.errChan)
+
+	for _, loop := range r.loops {
+		go loop.runReader()
+		go loop.runWriter()
 	}
+
+	<-ctx.Done()
+
+	for _, loop := range r.loops {
+		loop.stopReader()
+		loop.stopWriter()
+	}
+
+	return
 }
 
-const cqeBatchSize = 1 << 7
-
-func (r *Reactor) Run(ctx context.Context) error {
-	go r.SubmitSQELoop()
-
-	cqeBuff := make([]*uring.CQEvent, cqeBatchSize)
-
-	for {
-		_, _ = r.ring.Submit()
-
-		_, err := r.ring.WaitCQEventsWithTimeout(1, r.tickDuration)
-		if err == syscall.EAGAIN || err == syscall.EINTR {
-			runtime.Gosched()
-			continue
-		}
-
-		if err != nil && err != syscall.ETIME {
-			log.Print("err ", err.Error())
-			continue
-		}
-
-		for n := r.ring.PeekCQEventBatch(cqeBuff); n > 0; n = r.ring.PeekCQEventBatch(cqeBuff) {
-			for i := 0; i < n; i++ {
-				cqe := cqeBuff[i]
-
-				//r.ring.SeenCQE(cqe)
-				if cqe.UserData == timeoutNonce || cqe.UserData == cancelNonce {
-					continue
-				}
-
-				r.commandsMu.Lock()
-
-				cmd := r.commands[cqe.UserData]
-				//if !exists {
-				//	//fmt.Println("NOT EXISTING DATA", cqe.UserData, "cntr", cntr)
-				//	//_, exists := deletes[cqe.UserData]
-				//	//if exists {
-				//	//	fmt.Println("DELETE PREVIOUSLY!!!", "cntr", deletes[cqe.UserData])
-				//	//}
-				//	//fmt.Println("res", cqe.Res)
-				//	//fmt.Println("len", len(r.commands))
-				//	//fmt.Println("len", r.commands)
-				//
-				//}
-
-				cmd.cqe <- uring.CQEvent{
-					UserData: cqe.UserData,
-					Res:      cqe.Res,
-					Flags:    cqe.Flags,
-				}
-				delete(r.commands, cqe.UserData)
-
-				r.commandsMu.Unlock()
-			}
-
-			r.ring.AdvanceCQ(uint32(n))
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-	}
+func (r *Reactor) Errors() chan error {
+	return r.errChan
 }
 
-func (r *Reactor) queue(op uring.Operation, resultChan chan<- uring.CQEvent, linkedReqs ...sqeQueueRequest) (nonce uint64, err error) {
-	nonce = r.nextNonce()
+func (r *Reactor) queue(op uring.Operation, timeout time.Duration, retChan chan uring.CQEvent) (uint64, error) {
+	nonce := r.nextNonce()
 
-	r.commandsMu.Lock()
-	r.commands[nonce] = command{
-		op:  op,
-		cqe: resultChan,
-	}
-	r.commandsMu.Unlock()
+	loop := r.LoopForNonce(nonce)
 
-	if len(linkedReqs) == 0 {
-		err = r.queueSQE(sqeQueueRequest{op, 0, nonce})
-	} else {
-		request := []sqeQueueRequest{
-			{op, uring.SqeIOLinkFlag, nonce},
-		}
-		err = r.queueSQE(append(request, linkedReqs...)...)
-	}
-
-	if err != nil {
-		return nonce, err
-	}
+	err := loop.Queue(subSqeRequest{op, 0, nonce, timeout}, retChan)
 
 	return nonce, err
 }
 
-func (r *Reactor) Queue(op uring.Operation, resultChan chan<- uring.CQEvent) (nonce uint64, err error) {
-	return r.queue(op, resultChan)
+func (r *Reactor) LoopForNonce(nonce uint64) *ringEventLoop2 {
+	n := len(r.loops)
+	return r.loops[nonce%uint64(n)]
 }
 
-func (r *Reactor) QueueWithDeadline(op uring.Operation, deadline time.Time, resultChan chan<- uring.CQEvent) (nonce uint64, err error) {
+func (r *Reactor) Queue(op uring.Operation, retChan chan uring.CQEvent) (uint64, error) {
+	return r.queue(op, time.Duration(0), retChan)
+}
+
+func (r *Reactor) QueueWithDeadline(op uring.Operation, deadline time.Time, retChan chan uring.CQEvent) (uint64, error) {
 	if deadline.IsZero() {
-		return r.Queue(op, resultChan)
+		return r.Queue(op, retChan)
 	}
 
-	return r.queue(op, resultChan, sqeQueueRequest{
-		op:       uring.LinkTimeout(deadline.Sub(time.Now())),
-		userData: timeoutNonce,
-	})
+	return r.queue(op, deadline.Sub(time.Now()), retChan)
 }
 
-func (r *Reactor) QueueAndWait(op uring.Operation) (uring.CQEvent, error) {
-	cqeChan := make(chan uring.CQEvent)
-	defer close(cqeChan)
+func (r *Reactor) Cancel(nonce uint64) error {
+	loop := r.LoopForNonce(nonce)
+	return loop.cancel(nonce)
+}
 
-	_, err := r.Queue(op, cqeChan)
-	if err != nil {
-		return uring.CQEvent{}, err
+type ringEventLoop2 struct {
+	returns     map[uint64]chan uring.CQEvent
+	returnsLock sync.Mutex
+
+	queueSQELock sync.Mutex
+
+	submitSignal chan struct{}
+
+	ring         *uring.Ring
+	tickDuration time.Duration
+
+	errChan chan<- error
+
+	stopReaderChan chan struct{}
+	stopWriterChan chan struct{}
+
+	needSubmit uint32
+}
+
+func newRingEventLoop2(ring *uring.Ring, errChan chan<- error, tickDuration time.Duration) *ringEventLoop2 {
+	return &ringEventLoop2{
+		ring:           ring,
+		tickDuration:   tickDuration,
+		submitSignal:   make(chan struct{}),
+		stopReaderChan: make(chan struct{}),
+		stopWriterChan: make(chan struct{}),
+		returns:        map[uint64]chan uring.CQEvent{},
+		errChan:        errChan,
+	}
+}
+
+func (loop *ringEventLoop2) runReader() {
+	runtime.LockOSThread()
+
+	cqeBuff := make([]*uring.CQEvent, cqeBuffSize)
+	for {
+		loop.submitSignal <- struct{}{}
+
+		_, err := loop.ring.WaitCQEventsWithTimeout(1, loop.tickDuration)
+
+		if err == syscall.EAGAIN || err == syscall.EINTR || err == syscall.ETIME {
+			runtime.Gosched()
+			goto CheckCtxAndContinue
+		}
+
+		if err != nil {
+			loop.errChan <- err
+			goto CheckCtxAndContinue
+		}
+
+		for n := loop.ring.PeekCQEventBatch(cqeBuff); n > 0; n = loop.ring.PeekCQEventBatch(cqeBuff) {
+			fmt.Println("buff len", n)
+			for i := 0; i < n; i++ {
+				cqe := cqeBuff[i]
+
+				nonce := cqe.UserData
+				if nonce == timeoutNonce || nonce == cancelNonce {
+					continue
+				}
+
+				loop.returnsLock.Lock()
+				loop.returns[nonce] <- uring.CQEvent{
+					UserData: cqe.UserData,
+					Res:      cqe.Res,
+					Flags:    cqe.Flags,
+				}
+				delete(loop.returns, nonce)
+				loop.returnsLock.Unlock()
+			}
+
+			loop.ring.AdvanceCQ(uint32(n))
+		}
+
+	CheckCtxAndContinue:
+		select {
+		case <-loop.stopReaderChan:
+			close(loop.stopReaderChan)
+			return
+		default:
+			continue
+		}
+	}
+}
+
+func (loop *ringEventLoop2) stopReader() {
+	loop.stopReaderChan <- struct{}{}
+	<-loop.stopReaderChan
+}
+
+func (loop *ringEventLoop2) stopWriter() {
+	loop.stopWriterChan <- struct{}{}
+	<-loop.stopWriterChan
+}
+
+func (loop *ringEventLoop2) cancel(nonce uint64) error {
+	op := uring.Cancel(nonce, 0)
+
+	return loop.Queue(subSqeRequest{
+		op:       op,
+		userData: cancelNonce,
+	}, nil)
+}
+
+func (loop *ringEventLoop2) Queue(req subSqeRequest, retChan chan uring.CQEvent) (err error) {
+	loop.queueSQELock.Lock()
+	defer loop.queueSQELock.Unlock()
+
+	atomic.StoreUint32(&loop.needSubmit, 1)
+
+	if req.timeout == 0 {
+		err = loop.ring.QueueSQE(req.op, req.flags, req.userData)
+	} else {
+		err = loop.ring.QueueSQE(req.op, req.flags|uring.SqeIOLinkFlag, req.userData)
+		if err == nil {
+			_ = loop.ring.QueueSQE(uring.LinkTimeout(req.timeout), 0, timeoutNonce)
+		}
 	}
 
-	return <-cqeChan, nil
-}
-
-func (r *Reactor) QueueAndWaitWithDeadline(op uring.Operation, deadline time.Time) (uring.CQEvent, error) {
-	cqeChan := make(chan uring.CQEvent)
-	defer close(cqeChan)
-
-	_, err := r.QueueWithDeadline(op, deadline, cqeChan)
-	if err != nil {
-		return uring.CQEvent{}, err
+	if err == nil {
+		loop.returnsLock.Lock()
+		loop.returns[req.userData] = retChan
+		loop.returnsLock.Unlock()
 	}
 
-	return <-cqeChan, nil
+	return err
 }
 
-type sqeQueueRequest struct {
-	op       uring.Operation
-	flags    uint8
-	userData uint64
-}
+func (loop *ringEventLoop2) runWriter() {
+	defer close(loop.submitSignal)
 
-func (r *Reactor) queueSQEnew(requests ...sqeQueueRequest) (err error) {
-	r.submitBufferLock.Lock()
-	defer r.submitBufferLock.Unlock()
+	var err error
+	for {
+		select {
+		case <-loop.submitSignal:
+			if atomic.CompareAndSwapUint32(&loop.needSubmit, 1, 0) {
+				loop.queueSQELock.Lock()
+				_, err = loop.ring.Submit()
+				loop.queueSQELock.Unlock()
 
-	r.buffer = append(r.buffer, requests...)
-	return nil
-}
-
-func (r *Reactor) queueSQE(requests ...sqeQueueRequest) (err error) {
-	for _, req := range requests {
-		r.reqBuss <- req
+				if err != nil {
+					loop.errChan <- &RingError{err, loop.ring.Fd()}
+				}
+			}
+		case <-loop.stopWriterChan:
+			close(loop.stopWriterChan)
+			return
+		}
 	}
-	return nil
-	//
-	//r.queueMy.Lock()
-	//defer r.queueMy.Unlock()
-	//
-	//for _, req := range requests {
-	//	if qErr := r.ring.QueueSQE(req.op, req.flags, req.userData); qErr != nil {
-	//		if err == nil {
-	//			err = qErr
-	//		} else {
-	//			err = fmt.Errorf("%w; %s", err, qErr.Error())
-	//		}
-	//	}
-	//}
-	//
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//_, err = r.ring.Submit()
-	//return err
-}
-
-func (r *Reactor) Cancel(nonce uint64) (err error) {
-	op := r.opCache.GetOrSet("cancel", func() uring.Operation {
-		return uring.Cancel(0, 0)
-	})
-	op.(*uring.CancelOp).SetTargetUserData(nonce)
-
-	return r.queueSQE(sqeQueueRequest{op, 0, cancelNonce})
 }
 
 func (r *Reactor) nextNonce() uint64 {
