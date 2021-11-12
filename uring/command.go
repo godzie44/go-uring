@@ -94,7 +94,7 @@ func ReadV(file *os.File, vectors [][]byte, offset uint64) *ReadVOp {
 }
 
 func (op *ReadVOp) PrepSQE(sqe *SQEntry) {
-	sqe.fill(ReadVCode, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), 0)
+	sqe.fill(ReadVCode, int32(op.FD), uintptr(unsafe.Pointer(&op.IOVecs[0])), uint32(len(op.IOVecs)), op.Offset)
 }
 
 func (op *ReadVOp) Code() OpCode {
