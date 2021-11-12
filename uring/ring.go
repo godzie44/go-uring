@@ -73,6 +73,13 @@ func WithIOPoll() SetupOption {
 	}
 }
 
+func WithAttachedWQ(fd int32) SetupOption {
+	return func(params *ringParams) {
+		params.flags = params.flags | setupAttachWQ
+		params.wqFD = uint32(fd)
+	}
+}
+
 //WithSQPoll add IORING_SETUP_SQPOLL flag.
 //Note, that process must started with root privileges
 //or the user should have the CAP_SYS_NICE capability (for kernel version >= 5.11).
