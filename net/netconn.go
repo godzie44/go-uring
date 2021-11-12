@@ -43,7 +43,7 @@ func newConn(fd int, lAddr, rAddr net.Addr, r *reactor.NetworkReactor) *Conn {
 		sendOp:    uring.Send(uintptr(fd), nil, 0),
 	}
 
-	r.RegisterFd(fd, nil, conn.readChan, conn.writeChan)
+	r.RegisterSocket(fd, conn.readChan, conn.writeChan)
 
 	return conn
 }

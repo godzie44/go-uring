@@ -61,7 +61,7 @@ func (ts *NetworkReactorTestSuite) TestExecuteWithDeadline() {
 	defer l.Close()
 
 	acceptChan := make(chan uring.CQEvent)
-	ts.reactor.RegisterFd(fd, acceptChan, nil, nil)
+	ts.reactor.RegisterSocket(fd, acceptChan, nil)
 
 	acceptTime := time.Now()
 	_ = ts.reactor.QueueWithDeadline(uring.Accept(uintptr(fd), 0), acceptTime.Add(time.Second))
@@ -79,7 +79,7 @@ func (ts *NetworkReactorTestSuite) TestCancelOperation() {
 	defer l.Close()
 
 	acceptChan := make(chan uring.CQEvent)
-	ts.reactor.RegisterFd(fd, acceptChan, nil, nil)
+	ts.reactor.RegisterSocket(fd, acceptChan, nil)
 
 	id := ts.reactor.Queue(uring.Accept(uintptr(fd), 0))
 
@@ -96,7 +96,7 @@ func TestNetworkReactor(t *testing.T) {
 	suite.Run(t, new(NetworkReactorTestSuite))
 }
 
-func TestUserData(t *testing.T) {
+func TestRequestID(t *testing.T) {
 	type testCase struct {
 		fd     int
 		opCode uring.OpCode

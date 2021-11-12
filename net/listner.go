@@ -53,7 +53,7 @@ func NewListener(lc net.ListenConfig, addr string, reactor *reactor.NetworkReact
 		acceptOp:   uring.Accept(uintptr(sockFd), 0),
 	}
 
-	reactor.RegisterFd(sockFd, l.acceptChan, nil, nil)
+	reactor.RegisterSocket(sockFd, l.acceptChan, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -129,7 +129,6 @@ func setKeepAlive(fd int, keepalive bool) error {
 }
 
 func setKeepAlivePeriod(fd int, d time.Duration) error {
-	// The kernel expects seconds so round to next highest second.
 	secs := int(roundDurationUp(d, time.Second))
 	if err := unix.SetsockoptInt(fd, unix.IPPROTO_TCP, unix.TCP_KEEPINTVL, secs); err != nil {
 		return wrapSyscallError("setsockopt", err)

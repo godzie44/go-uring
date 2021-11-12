@@ -38,6 +38,8 @@ type NetworkReactor struct {
 	tickDuration time.Duration
 	loops        []*ringEventLoop
 
+	registry *registry
+
 	errChan chan error
 }
 
@@ -55,9 +57,10 @@ func NewNet(rings []*uring.Ring, opts ...ReactorOption) *NetworkReactor {
 		errChan:      make(chan error, 128),
 	}
 
+	r.registry = newRegistry(len(rings))
+
 	for _, ring := range rings {
-		loop := newRingEventLoop(ring, r.errChan, r.tickDuration)
-		loop.fdDivider = len(rings)
+		loop := newRingEventLoop(ring, r.errChan, r.registry, r.tickDuration)
 		r.loops = append(r.loops, loop)
 	}
 
@@ -72,8 +75,8 @@ func (r *NetworkReactor) Run(ctx context.Context) {
 	defer close(r.errChan)
 
 	for _, loop := range r.loops {
-		go loop.runRingReader()
-		go loop.runRingWriter()
+		go loop.runReader()
+		go loop.runWriter()
 	}
 
 	<-ctx.Done()
@@ -117,8 +120,8 @@ func (r *NetworkReactor) LoopForFd(fd int) *ringEventLoop {
 	return r.loops[fd%n]
 }
 
-func (r *NetworkReactor) RegisterFd(fd int, acceptChan, readChan, writeChan chan uring.CQEvent) {
-	r.LoopForFd(fd).addFd(fd, acceptChan, readChan, writeChan)
+func (r *NetworkReactor) RegisterSocket(fd int, readChan, writeChan chan<- uring.CQEvent) {
+	r.registry.add(fd, readChan, writeChan)
 }
 
 func (r *NetworkReactor) Queue(op NetOperation) RequestID {
@@ -138,19 +141,48 @@ func (r *NetworkReactor) Cancel(id RequestID) {
 	loop.cancel(id)
 }
 
-type connection struct {
-	fd         int
-	acceptChan chan uring.CQEvent
-	readChan   chan uring.CQEvent
-	writeChan  chan uring.CQEvent
+type sockInfo struct {
+	fd        int
+	readChan  chan<- uring.CQEvent
+	writeChan chan<- uring.CQEvent
 }
 
-type registry []connection
+type registry struct {
+	data    [][]sockInfo
+	granCnt int
+}
+
+func newRegistry(granularity int) *registry {
+	buff := make([][]sockInfo, granularity)
+	for i := range buff {
+		buff[i] = make([]sockInfo, 1<<16)
+	}
+	return &registry{
+		data:    buff,
+		granCnt: granularity,
+	}
+}
+
+func (r *registry) add(fd int, readChan chan<- uring.CQEvent, writeChan chan<- uring.CQEvent) {
+	granule := fd % r.granCnt
+	idx := fd / r.granCnt
+
+	r.data[granule][idx].fd = fd
+	r.data[granule][idx].readChan = readChan
+	r.data[granule][idx].writeChan = writeChan
+}
+
+func (r *registry) get(fd int) *sockInfo {
+	granule := fd % r.granCnt
+	idx := fd / r.granCnt
+
+	return &r.data[granule][idx]
+}
 
 type ringEventLoop struct {
 	fdDivider int
 
-	registry registry
+	registry *registry
 
 	reqBuss      chan subSqeRequest
 	submitSignal chan struct{}
@@ -166,7 +198,7 @@ type ringEventLoop struct {
 	needSubmit uint32
 }
 
-func newRingEventLoop(ring *uring.Ring, errChan chan<- error, tickDuration time.Duration) *ringEventLoop {
+func newRingEventLoop(ring *uring.Ring, errChan chan<- error, sockRegistry *registry, tickDuration time.Duration) *ringEventLoop {
 	fmt.Println("r", ring, ring.Fd())
 
 	return &ringEventLoop{
@@ -176,21 +208,13 @@ func newRingEventLoop(ring *uring.Ring, errChan chan<- error, tickDuration time.
 		submitSignal:   make(chan struct{}),
 		stopReaderChan: make(chan struct{}),
 		stopWriterChan: make(chan struct{}),
-		registry:       make(registry, 1<<16),
+		registry:       sockRegistry,
 		errChan:        errChan,
 	}
 }
 
-func (loop *ringEventLoop) idxInRegistry(fd int) int {
-	return fd / loop.fdDivider
-}
-
-func (loop *ringEventLoop) addFd(fd int, acceptChan, readChan, writeChan chan uring.CQEvent) {
-	idx := loop.idxInRegistry(fd)
-	loop.registry[idx].fd = fd
-	loop.registry[idx].acceptChan = acceptChan
-	loop.registry[idx].readChan = readChan
-	loop.registry[idx].writeChan = writeChan
+func (loop *ringEventLoop) addFd(fd int, readChan, writeChan chan<- uring.CQEvent) {
+	loop.registry.add(fd, readChan, writeChan)
 }
 
 type RingError struct {
@@ -212,7 +236,7 @@ func (r *RingQueueError) Error() string {
 	return fmt.Sprintf("%s, ring fd: %d", r.Err.Error(), r.RingFd)
 }
 
-func (loop *ringEventLoop) runRingReader() {
+func (loop *ringEventLoop) runReader() {
 	runtime.LockOSThread()
 
 	cqeBuff := make([]*uring.CQEvent, cqeBuffSize)
@@ -238,21 +262,20 @@ func (loop *ringEventLoop) runRingReader() {
 					continue
 				}
 
-				userData := RequestID(cqe.UserData)
+				id := RequestID(cqe.UserData)
 				event := uring.CQEvent{
 					UserData: cqe.UserData,
 					Res:      cqe.Res,
 					Flags:    cqe.Flags,
 				}
-				idx := loop.idxInRegistry(userData.fd())
 
-				switch userData.opcode() {
-				case uring.AcceptCode:
-					loop.registry[idx].acceptChan <- event
-				case uring.RecvCode:
-					loop.registry[idx].readChan <- event
+				sock := loop.registry.get(id.fd())
+
+				switch id.opcode() {
+				case uring.AcceptCode, uring.RecvCode:
+					sock.readChan <- event
 				case uring.SendCode:
-					loop.registry[idx].writeChan <- event
+					sock.writeChan <- event
 				}
 			}
 
@@ -289,7 +312,7 @@ func (loop *ringEventLoop) cancel(id RequestID) {
 	}
 }
 
-func (loop *ringEventLoop) runRingWriter() {
+func (loop *ringEventLoop) runWriter() {
 	defer close(loop.reqBuss)
 	defer close(loop.submitSignal)
 
