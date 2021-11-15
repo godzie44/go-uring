@@ -73,7 +73,7 @@ func WithIOPoll() SetupOption {
 	}
 }
 
-func WithAttachedWQ(fd int32) SetupOption {
+func WithAttachedWQ(fd int) SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupAttachWQ
 		params.wqFD = uint32(fd)
@@ -202,7 +202,7 @@ func (r *Ring) Submit() (uint, error) {
 		flags |= sysRingEnterGetEvents
 	}
 
-	consumed, err := sysEnter(r.fd, flushed, 0, flags, nil)
+	consumed, err := sysEnter(r.fd, flushed, 0, flags, nil, true)
 	return consumed, err
 }
 
@@ -281,7 +281,7 @@ func (r *Ring) getCQEvents(params getParams) (cqe *CQEvent, err error) {
 		}
 
 		var consumed uint
-		consumed, err = sysEnter2(r.fd, params.submit, params.waitNr, flags, params.arg, params.sz)
+		consumed, err = sysEnter2(r.fd, params.submit, params.waitNr, flags, params.arg, params.sz, false)
 
 		if err != nil {
 			break
@@ -433,7 +433,7 @@ func (r *Ring) PeekCQEventBatch(buff []*CQEvent) int {
 	n := r.peekCQEventBatch(buff)
 	if n == 0 {
 		if r.sqRing.cqNeedFlush() {
-			_, _ = sysEnter(r.fd, 0, 0, sysRingEnterGetEvents, nil)
+			_, _ = sysEnter(r.fd, 0, 0, sysRingEnterGetEvents, nil, false)
 			n = r.peekCQEventBatch(buff)
 		}
 	}

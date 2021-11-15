@@ -2,7 +2,6 @@ package uring
 
 import (
 	"context"
-	"fmt"
 	"github.com/godzie44/go-uring/uring"
 	"github.com/stretchr/testify/suite"
 	"io/ioutil"
@@ -86,10 +85,7 @@ func (ts *ReactorTestSuite) TestExecuteWithDeadline() {
 	_, err = ts.reactor.QueueWithDeadline(uring.Accept(uintptr(fd), 0), acceptTime.Add(time.Second), acceptChan)
 	ts.Require().NoError(err)
 
-	fmt.Println("wait")
-
 	cqe := <-acceptChan
-	fmt.Println(cqe)
 
 	ts.Require().NoError(err)
 	ts.Require().Error(cqe.Error(), syscall.ECANCELED)

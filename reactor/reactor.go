@@ -2,7 +2,6 @@ package uring
 
 import (
 	"context"
-	"fmt"
 	"github.com/godzie44/go-uring/uring"
 	"runtime"
 	"sync"
@@ -140,7 +139,6 @@ func (loop *ringEventLoop2) runReader() {
 		}
 
 		for n := loop.ring.PeekCQEventBatch(cqeBuff); n > 0; n = loop.ring.PeekCQEventBatch(cqeBuff) {
-			fmt.Println("buff len", n)
 			for i := 0; i < n; i++ {
 				cqe := cqeBuff[i]
 
