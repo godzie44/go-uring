@@ -1,5 +1,4 @@
 //go:build linux
-// +build linux
 
 package uring
 
@@ -95,8 +94,6 @@ func (r *NetworkReactor) Run(ctx context.Context) {
 		loop.stopReader()
 		loop.stopWriter()
 	}
-
-	return
 }
 
 func (r *NetworkReactor) Errors() chan error {
