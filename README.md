@@ -6,11 +6,11 @@ This project is a port of [liburing](https://github.com/axboe/liburing) for GO.
 The project contains three packages:
 1. uring - low-level io_uring API. This API is similar to libruing API.
 2. reactor - high-level API - realization of event loop pattern with io_uring.
-3. net - this is a realization of net.Listener and net.Conn interfaces with io_uring. This can be used, for example, to run HTTP server with io_uring inside.
+3. net - this is a realization of net.Listener and net.Conn interfaces with io_uring. This can be used, for example, to run an HTTP server with io_uring inside.
 
 ### uring package
 
-Package uring - is low level package, it is port of liburing.
+Package uring is a port of liburing. It provides low-level functionality for working with io_uring.
 Example of usage:
 
 - Read file:
@@ -72,16 +72,16 @@ Example of usage:
     }
 ```
 
-- And more examples in test, or example folder
+- Look more examples in tests and example folder
 
 ### reactor package
 
-Reactor - is event loop with io_uring inside it. Currently there two reactors in this package:
-1. Reactor - generic event loop, give attempt to work with all io_uring operations.
-2. NetReactor - event loop optimized for work with network operations. Currently support Accept, Recv and Send.
+Reactor - is event loop with io_uring inside it. Currently, there are two reactors in this package:
+1. Reactor - generic event loop, give a possibility to work with all io_uring operations.
+2. NetReactor - event loop optimized for work with network operations. Currently, support Accept, Recv, and Send.
 
 ### net package
 
-This is realization of net.Listener and net.Conn interfaces. Its exists NetReactor inside. Please check example of http server and benchmarks for familirize with it.
+This is the realization of net.Listener and net.Conn interfaces. It exists NetReactor inside. Please check the example of HTTP server and benchmarks to familiarize yourself with it.
 
-Project under construction. Check tests for familiarization with the current functionality.
+### Examples and benchmarks

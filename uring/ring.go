@@ -50,6 +50,7 @@ func (c *cq) readyCount() uint32 {
 
 const MaxEntries uint32 = 1 << 15
 
+//Ring io_uring instance.
 type Ring struct {
 	fd int
 
@@ -63,6 +64,7 @@ var ErrRingSetup = errors.New("ring setup")
 
 type SetupOption func(params *ringParams)
 
+//WithCQSize set CQ max entries count.
 func WithCQSize(sz uint32) SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupCQSize
@@ -70,12 +72,14 @@ func WithCQSize(sz uint32) SetupOption {
 	}
 }
 
+//WithIOPoll enable IOPOLL option.
 func WithIOPoll() SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupIOPoll
 	}
 }
 
+//WithAttachedWQ use worker pool from another io_uring instance.
 func WithAttachedWQ(fd int) SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupAttachWQ
@@ -93,12 +97,7 @@ func WithSQPoll(threadIdleMs uint32) SetupOption {
 	}
 }
 
-func WithIOWQMaxWorkers(count int) SetupOption {
-	return func(params *ringParams) {
-		params.flags = params.flags | setupIOPoll
-	}
-}
-
+//New create new io_uring instance with. Entries - size of SQ and CQ buffers.
 func New(entries uint32, opts ...SetupOption) (*Ring, error) {
 	if entries > MaxEntries {
 		return nil, fmt.Errorf("%w, entries > MaxEntries", ErrRingSetup)
@@ -123,10 +122,11 @@ func New(entries uint32, opts ...SetupOption) (*Ring, error) {
 
 type Defer func() error
 
-func CreateMany(count int, entries uint32, opts ...SetupOption) ([]*Ring, Defer, error) {
+//CreateMany create cnt io_uring instances.
+func CreateMany(cnt int, entries uint32, opts ...SetupOption) ([]*Ring, Defer, error) {
 	var defers = map[int]func() error{}
 	var rings []*Ring
-	for i := 0; i < count; i++ {
+	for i := 0; i < cnt; i++ {
 		r, err := New(entries, opts...)
 		if err != nil {
 			for _, closeFn := range defers {
@@ -149,6 +149,7 @@ func CreateMany(count int, entries uint32, opts ...SetupOption) ([]*Ring, Defer,
 	}, nil
 }
 
+//Fd io_uring file descriptor.
 func (r *Ring) Fd() int {
 	return r.fd
 }
@@ -160,6 +161,7 @@ func (r *Ring) Close() error {
 
 var ErrSQOverflow = errors.New("sq ring overflow")
 
+//NextSQE return pointer of the next available SQE in SQ queue.
 func (r *Ring) NextSQE() (entry *SQEntry, err error) {
 	head := atomic.LoadUint32(r.sqRing.kHead)
 	next := r.sqRing.sqeTail + 1
@@ -180,6 +182,7 @@ type Operation interface {
 	Code() OpCode
 }
 
+//QueueSQE adds an operation to the queue SQ.
 func (r *Ring) QueueSQE(op Operation, flags uint8, userData uint64) error {
 	sqe, err := r.NextSQE()
 	if err != nil {
@@ -192,6 +195,7 @@ func (r *Ring) QueueSQE(op Operation, flags uint8, userData uint64) error {
 	return nil
 }
 
+//Submit new SQEs. Return count of submitted SQEs.
 func (r *Ring) Submit() (uint, error) {
 	flushed := r.flushSQ()
 
@@ -298,14 +302,15 @@ func (r *Ring) getCQEvents(params getParams) (cqe *CQEvent, err error) {
 	return cqe, err
 }
 
-func (r *Ring) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cqe *CQEvent, err error) {
+//WaitCQEventsWithTimeout wait cnt CQEs in CQ. Timeout will be exceeded if no new CQEs in queue.
+func (r *Ring) WaitCQEventsWithTimeout(cnt uint32, timeout time.Duration) (cqe *CQEvent, err error) {
 	if r.Params.ExtArgFeature() {
 		ts := syscall.NsecToTimespec(timeout.Nanoseconds())
 		arg := newGetEventsArg(uintptr(unsafe.Pointer(nil)), numSig/8, uintptr(unsafe.Pointer(&ts)))
 
 		cqe, err = r.getCQEvents(getParams{
 			submit: 0,
-			waitNr: count,
+			waitNr: cnt,
 			flags:  sysRingEnterExtArg,
 			arg:    unsafe.Pointer(arg),
 			sz:     int(unsafe.Sizeof(getEventsArg{})),
@@ -339,38 +344,43 @@ func (r *Ring) WaitCQEventsWithTimeout(count uint32, timeout time.Duration) (cqe
 
 	return r.getCQEvents(getParams{
 		submit: toSubmit,
-		waitNr: count,
+		waitNr: cnt,
 		arg:    unsafe.Pointer(nil),
 		sz:     numSig / 8,
 	})
 }
 
-func (r *Ring) WaitCQEvents(count uint32) (cqe *CQEvent, err error) {
+//WaitCQEvents wait cnt CQEs in CQ.
+func (r *Ring) WaitCQEvents(cnt uint32) (cqe *CQEvent, err error) {
 	return r.getCQEvents(getParams{
 		submit: 0,
-		waitNr: count,
+		waitNr: cnt,
 		arg:    unsafe.Pointer(nil),
 		sz:     numSig / 8,
 	})
 }
 
-func (r *Ring) SubmitAndWaitCQEvents(count uint32) (cqe *CQEvent, err error) {
+//SubmitAndWaitCQEvents submit new SQEs in SQE and wait cnt CQEs in CQ. Return first available CQE.
+func (r *Ring) SubmitAndWaitCQEvents(cnt uint32) (cqe *CQEvent, err error) {
 	return r.getCQEvents(getParams{
 		submit: r.flushSQ(),
-		waitNr: count,
+		waitNr: cnt,
 		arg:    unsafe.Pointer(nil),
 		sz:     numSig / 8,
 	})
 }
 
+//PeekCQE return first available CQE from CQ.
 func (r *Ring) PeekCQE() (*CQEvent, error) {
 	return r.WaitCQEvents(0)
 }
 
+//SeenCQE dequeue CQ on 1 entry.
 func (r *Ring) SeenCQE(cqe *CQEvent) {
 	r.AdvanceCQ(1)
 }
 
+//AdvanceCQ dequeue CQ on n entry.
 func (r *Ring) AdvanceCQ(n uint32) {
 	atomic.AddUint32(r.cqRing.kHead, n)
 }
@@ -432,6 +442,7 @@ func min(a, b uint32) uint32 {
 	return b
 }
 
+//PeekCQEventBatch fill buffer by available CQEs. Return count of filled CQEs.
 func (r *Ring) PeekCQEventBatch(buff []*CQEvent) int {
 	n := r.peekCQEventBatch(buff)
 	if n == 0 {
