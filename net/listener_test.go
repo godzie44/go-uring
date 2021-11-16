@@ -15,7 +15,10 @@ func TestListenerAccept(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	l, err := NewListener(net.ListenConfig{}, "0.0.0.0:8080", reactor.NewNet([]*uring.Ring{r}))
+	reactor, err := reactor.NewNet([]*uring.Ring{r})
+	require.NoError(t, err)
+
+	l, err := NewListener(net.ListenConfig{}, "0.0.0.0:8080", reactor)
 	require.NoError(t, err)
 
 	connections := make([]net.Conn, 100)

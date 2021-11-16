@@ -13,7 +13,7 @@ import (
 
 type Reactor struct {
 	tickDuration time.Duration
-	loops        []*ringEventLoop2
+	loops        []*ringEventLoop
 
 	currentNonce uint64
 	nonceLock    sync.Mutex
@@ -21,18 +21,24 @@ type Reactor struct {
 	errChan chan error
 }
 
-func New(rings []*uring.Ring, opts ...ReactorOption) *Reactor {
+func New(rings []*uring.Ring, opts ...ReactorOption) (*Reactor, error) {
+	for _, ring := range rings {
+		if err := checkRingReq(ring, false); err != nil {
+			return nil, err
+		}
+	}
+
 	r := &Reactor{
 		tickDuration: time.Millisecond * 1,
 		errChan:      make(chan error, 128),
 	}
 
 	for _, ring := range rings {
-		loop := newRingEventLoop2(ring, r.errChan, r.tickDuration)
+		loop := newRingEventLoop(ring, r.errChan, r.tickDuration)
 		r.loops = append(r.loops, loop)
 	}
 
-	return r
+	return r, nil
 }
 
 func (r *Reactor) Run(ctx context.Context) {
@@ -67,7 +73,7 @@ func (r *Reactor) queue(op uring.Operation, timeout time.Duration, retChan chan 
 	return nonce, err
 }
 
-func (r *Reactor) LoopForNonce(nonce uint64) *ringEventLoop2 {
+func (r *Reactor) LoopForNonce(nonce uint64) *ringEventLoop {
 	n := len(r.loops)
 	return r.loops[nonce%uint64(n)]
 }
@@ -89,7 +95,7 @@ func (r *Reactor) Cancel(nonce uint64) error {
 	return loop.cancel(nonce)
 }
 
-type ringEventLoop2 struct {
+type ringEventLoop struct {
 	returns     map[uint64]chan uring.CQEvent
 	returnsLock sync.Mutex
 
@@ -108,8 +114,8 @@ type ringEventLoop2 struct {
 	needSubmit uint32
 }
 
-func newRingEventLoop2(ring *uring.Ring, errChan chan<- error, tickDuration time.Duration) *ringEventLoop2 {
-	return &ringEventLoop2{
+func newRingEventLoop(ring *uring.Ring, errChan chan<- error, tickDuration time.Duration) *ringEventLoop {
+	return &ringEventLoop{
 		ring:           ring,
 		tickDuration:   tickDuration,
 		submitSignal:   make(chan struct{}),
@@ -120,7 +126,7 @@ func newRingEventLoop2(ring *uring.Ring, errChan chan<- error, tickDuration time
 	}
 }
 
-func (loop *ringEventLoop2) runReader() {
+func (loop *ringEventLoop) runReader() {
 	runtime.LockOSThread()
 
 	cqeBuff := make([]*uring.CQEvent, cqeBuffSize)
@@ -172,17 +178,17 @@ func (loop *ringEventLoop2) runReader() {
 	}
 }
 
-func (loop *ringEventLoop2) stopReader() {
+func (loop *ringEventLoop) stopReader() {
 	loop.stopReaderChan <- struct{}{}
 	<-loop.stopReaderChan
 }
 
-func (loop *ringEventLoop2) stopWriter() {
+func (loop *ringEventLoop) stopWriter() {
 	loop.stopWriterChan <- struct{}{}
 	<-loop.stopWriterChan
 }
 
-func (loop *ringEventLoop2) cancel(nonce uint64) error {
+func (loop *ringEventLoop) cancel(nonce uint64) error {
 	op := uring.Cancel(nonce, 0)
 
 	return loop.Queue(subSqeRequest{
@@ -191,7 +197,7 @@ func (loop *ringEventLoop2) cancel(nonce uint64) error {
 	}, nil)
 }
 
-func (loop *ringEventLoop2) Queue(req subSqeRequest, retChan chan uring.CQEvent) (err error) {
+func (loop *ringEventLoop) Queue(req subSqeRequest, retChan chan uring.CQEvent) (err error) {
 	loop.queueSQELock.Lock()
 	defer loop.queueSQELock.Unlock()
 
@@ -215,7 +221,7 @@ func (loop *ringEventLoop2) Queue(req subSqeRequest, retChan chan uring.CQEvent)
 	return err
 }
 
-func (loop *ringEventLoop2) runWriter() {
+func (loop *ringEventLoop) runWriter() {
 	defer close(loop.submitSignal)
 
 	var err error

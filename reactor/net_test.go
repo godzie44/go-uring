@@ -30,7 +30,8 @@ func (ts *NetworkReactorTestSuite) SetupTest() {
 	ts.Require().NoError(err)
 	ts.defers = defers
 
-	ts.reactor = NewNet(rings)
+	ts.reactor, err = NewNet(rings)
+	ts.Require().NoError(err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ts.stopReactor = cancel

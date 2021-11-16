@@ -28,7 +28,8 @@ func (ts *ReactorTestSuite) SetupTest() {
 	ts.Require().NoError(err)
 	ts.defers = defers
 
-	ts.reactor = New(rings)
+	ts.reactor, err = New(rings)
+	ts.Require().NoError(err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ts.stopReactor = cancel
