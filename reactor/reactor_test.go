@@ -92,7 +92,7 @@ func (ts *ReactorTestSuite) TestExecuteWithDeadline() {
 
 	ts.Require().NoError(err)
 	ts.Require().Error(cqe.Error(), syscall.ECANCELED)
-	ts.Require().True(time.Now().Sub(acceptTime) > time.Second && time.Now().Sub(acceptTime) < time.Second+time.Millisecond*100)
+	ts.Require().True(time.Since(acceptTime) > time.Second && time.Since(acceptTime) < time.Second+time.Millisecond*100)
 }
 
 func (ts *ReactorTestSuite) TestCancelOperation() {

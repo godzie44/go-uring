@@ -87,7 +87,7 @@ func (r *Reactor) QueueWithDeadline(op uring.Operation, deadline time.Time, retC
 		return r.Queue(op, retChan)
 	}
 
-	return r.queue(op, deadline.Sub(time.Now()), retChan)
+	return r.queue(op, time.Until(deadline), retChan)
 }
 
 func (r *Reactor) Cancel(nonce uint64) error {

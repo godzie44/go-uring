@@ -140,7 +140,7 @@ func (r *NetworkReactor) QueueWithDeadline(op NetOperation, deadline time.Time) 
 		return r.Queue(op)
 	}
 
-	return r.queue(op, deadline.Sub(time.Now()))
+	return r.queue(op, time.Until(deadline))
 }
 
 func (r *NetworkReactor) Cancel(id RequestID) {

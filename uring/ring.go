@@ -129,7 +129,7 @@ func CreateMany(cnt int, entries uint32, opts ...SetupOption) ([]*Ring, Defer, e
 		r, err := New(entries, opts...)
 		if err != nil {
 			for _, closeFn := range defers {
-				closeFn()
+				_ = closeFn()
 			}
 			return nil, nil, err
 		}
