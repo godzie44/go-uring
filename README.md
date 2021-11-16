@@ -15,61 +15,61 @@ Example of usage:
 
 - Read file:
 ```GO
-    // create io_uring instance
-	ring, err := New(8)
-	noErr(err)
-	defer ring.Close()
+// create io_uring instance
+ring, err := New(8)
+noErr(err)
+defer ring.Close()
 
-	// open file and init read buffers
-    ...
-	
-	// add ReadV operation to SQ queue
-	err = ring.QueueSQE(ReadV(f, vectors, 0), 0, 0)
-    noErr(err)
+// open file and init read buffers
+...
 
-	// submit all SQ new entries
-	_, err = ring.Submit()
-    noErr(err)
+// add ReadV operation to SQ queue
+err = ring.QueueSQE(ReadV(f, vectors, 0), 0, 0)
+noErr(err)
 
-	// wait until data is reading into buffer
-	cqe, err := ring.WaitCQEvents(1)
-    noErr(err)
+// submit all SQ new entries
+_, err = ring.Submit()
+noErr(err)
 
-    // dequeue CQ
-    ring.SeenCQE(cqe)
-    
-    fmt.Println("read %d bytes, read result: %s", cqe.Res, vectors)
+// wait until data is reading into buffer
+cqe, err := ring.WaitCQEvents(1)
+noErr(err)
+
+// dequeue CQ
+ring.SeenCQE(cqe)
+
+fmt.Println("read %d bytes, read result: %s", cqe.Res, vectors)
 ```
 
 - Accept incoming connections:
 ```GO
-    // create io_uring instance
-    ring, err := New(8)
+// create io_uring instance
+ring, err := New(8)
+noErr(err)
+defer ring.Close()
+
+// create server socket
+...
+
+for {
+    // add Accept operation to SQ queue
+    err = ring.QueueSQE(Accept(socketFd, 0), 0, 0)
     noErr(err)
-    defer ring.Close()
 
-	// create server socket
-	...
+    // submit all SQ new entries
+    _, err = ring.Submit()
+    noErr(err)
 
-	for {
-        // add Accept operation to SQ queue
-        err = ring.QueueSQE(Accept(socketFd, 0), 0, 0)
-        noErr(err)
-
-        // submit all SQ new entries
-        _, err = ring.Submit()
-        noErr(err)
-
-        // wait until new client connection is accepted
-        cqe, err := ring.WaitCQEvents(1)
-        noErr(err)
-        
-		// handle client socket, socket descriptor now in cqe.Res field
-		handleNewConnection(cqe.Res)
-        
-		// dequeue CQ
-		ring.SeenCQE(cqe)
-    }
+    // wait until new client connection is accepted
+    cqe, err := ring.WaitCQEvents(1)
+    noErr(err)
+    
+    // handle client socket, socket descriptor now in cqe.Res field
+    handleNewConnection(cqe.Res)
+    
+    // dequeue CQ
+    ring.SeenCQE(cqe)
+}
 ```
 
 - Look more examples in tests and example folder
