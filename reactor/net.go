@@ -2,6 +2,7 @@ package uring
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/godzie44/go-uring/uring"
 	"math"
@@ -244,7 +245,7 @@ func (loop *ringEventLoop) runReader() {
 		loop.submitSignal <- struct{}{}
 
 		_, err := loop.ring.WaitCQEventsWithTimeout(1, loop.tickDuration)
-		if err == syscall.EAGAIN || err == syscall.EINTR || err == syscall.ETIME {
+		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.ETIME) {
 			runtime.Gosched()
 			goto CheckCtxAndContinue
 		}

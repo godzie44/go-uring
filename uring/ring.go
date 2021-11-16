@@ -98,7 +98,7 @@ func WithIOWQMaxWorkers(count int) SetupOption {
 
 func New(entries uint32, opts ...SetupOption) (*Ring, error) {
 	if entries > MaxEntries {
-		return nil, ErrRingSetup
+		return nil, fmt.Errorf("%w, entries > MaxEntries", ErrRingSetup)
 	}
 
 	params := ringParams{}
@@ -155,7 +155,7 @@ func (r *Ring) Close() error {
 	return joinErr(err, syscall.Close(r.fd))
 }
 
-var ErrSQRingOverflow = errors.New("sq ring overflow")
+var ErrSQOverflow = errors.New("sq ring overflow")
 
 func (r *Ring) NextSQE() (entry *SQEntry, err error) {
 	head := atomic.LoadUint32(r.sqRing.kHead)
@@ -166,7 +166,7 @@ func (r *Ring) NextSQE() (entry *SQEntry, err error) {
 		entry = (*SQEntry)(unsafe.Pointer(&r.sqRing.sqeBuff[idx]))
 		r.sqRing.sqeTail = next
 	} else {
-		err = ErrSQRingOverflow
+		err = ErrSQOverflow
 	}
 
 	return entry, err

@@ -1,6 +1,7 @@
 package uring
 
 import (
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"syscall"
@@ -88,7 +89,7 @@ func TestCQRingFull(t *testing.T) {
 	i := 0
 	for {
 		_, cqe, err := ring.peekCQEvent()
-		if err != nil && err == syscall.EAGAIN {
+		if err != nil && errors.Is(err, syscall.EAGAIN) {
 			break
 		}
 		if err != nil {
@@ -108,7 +109,7 @@ func TestCQRingFull(t *testing.T) {
 //TestCQRingSize test CQ ring sizing.
 func TestCQRingSize(t *testing.T) {
 	ring, err := New(4, WithCQSize(64))
-	if err == syscall.EINVAL {
+	if errors.Is(err, syscall.EINVAL) {
 		t.Skip("Skipped, not supported on this kernel")
 		return
 	}
@@ -123,7 +124,7 @@ func TestCQRingSize(t *testing.T) {
 
 func fillNOPs(r *Ring) (filled int) {
 	for {
-		if err := r.QueueSQE(Nop(), 0, 0); err == ErrSQRingOverflow {
+		if err := r.QueueSQE(Nop(), 0, 0); errors.Is(err, ErrSQOverflow) {
 			break
 		}
 		filled++
@@ -136,7 +137,7 @@ func TestRingNopAllSizes(t *testing.T) {
 	var depth uint32 = 1
 	for depth <= MaxEntries {
 		ring, err := New(depth)
-		if err == syscall.ENOMEM {
+		if errors.Is(err, syscall.ENOMEM) {
 			t.Skip("Skipped, not enough memory:", depth, "entries")
 			return
 		}

@@ -1,6 +1,7 @@
 package uring
 
 import (
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"runtime"
@@ -45,7 +46,7 @@ func TestMultipleTimeout(t *testing.T) {
 ENDTEST:
 	for {
 		cqe, err := r.WaitCQEvents(1)
-		if err == syscall.EAGAIN || err == syscall.EINTR {
+		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
 			runtime.Gosched()
 			continue
 		}
@@ -85,11 +86,11 @@ func TestSingleTimeoutWait(t *testing.T) {
 	var i = 0
 	for {
 		cqe, err := r.WaitCQEventsWithTimeout(2, time.Second*2)
-		if err == syscall.ETIME {
+		if errors.Is(err, syscall.ETIME) {
 			break
 		}
 
-		if err == syscall.EINTR || err == syscall.EAGAIN {
+		if errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EAGAIN) {
 			runtime.Gosched()
 			continue
 		}

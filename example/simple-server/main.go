@@ -72,7 +72,7 @@ func main() {
 		}
 
 		_, err = ring.WaitCQEvents(1)
-		if err == syscall.EAGAIN || err == syscall.EINTR {
+		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
 			continue
 		}
 

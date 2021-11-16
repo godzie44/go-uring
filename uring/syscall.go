@@ -2,6 +2,7 @@ package uring
 
 import (
 	"math"
+	"os"
 	"syscall"
 	"unsafe"
 )
@@ -74,7 +75,7 @@ func sysEnter2(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, si
 	}
 
 	if errno != 0 {
-		return 0, errno
+		return 0, os.NewSyscallError("io_uring_enter", errno)
 	}
 
 	return uint(consumed), nil
@@ -83,7 +84,7 @@ func sysEnter2(ringFD int, toSubmit uint32, minComplete uint32, flags uint32, si
 func sysSetup(entries uint32, params *ringParams) (int, error) {
 	fd, _, errno := syscall.Syscall(sysRingSetup, uintptr(entries), uintptr(unsafe.Pointer(params)), 0)
 	if errno != 0 {
-		return int(fd), errno
+		return int(fd), os.NewSyscallError("io_uring_setup", errno)
 	}
 
 	return int(fd), nil
@@ -100,7 +101,7 @@ func sysRegister(ringFD int, op int, arg unsafe.Pointer, nrArgs int) error {
 		0,
 	)
 	if errno != 0 {
-		return errno
+		return os.NewSyscallError("io_uring_register", errno)
 	}
 	return nil
 }

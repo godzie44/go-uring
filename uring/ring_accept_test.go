@@ -232,7 +232,7 @@ func TestAcceptMany(t *testing.T) {
 		}
 
 		_, err = ring.PeekCQE()
-		assert.True(t, err == syscall.EAGAIN)
+		assert.True(t, errors.Is(err, syscall.EAGAIN))
 
 		for _, l := range listeners {
 			assert.NoError(t, l.Close())
