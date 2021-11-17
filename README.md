@@ -16,15 +16,15 @@ Example of usage:
 - Read file:
 ```GO
 // create io_uring instance
-ring, err := New(8)
+ring, err := uring.New(8)
 noErr(err)
 defer ring.Close()
 
 // open file and init read buffers
-...
+file := ... 
 
 // add ReadV operation to SQ queue
-err = ring.QueueSQE(ReadV(f, vectors, 0), 0, 0)
+err = ring.QueueSQE(uring.ReadV(f, vectors, 0), 0, 0)
 noErr(err)
 
 // submit all SQ new entries
@@ -44,16 +44,16 @@ fmt.Println("read %d bytes, read result: %s", cqe.Res, vectors)
 - Accept incoming connections:
 ```GO
 // create io_uring instance
-ring, err := New(8)
+ring, err := uring.New(8)
 noErr(err)
 defer ring.Close()
 
 // create server socket
-...
+socketFd := ...
 
 for {
     // add Accept operation to SQ queue
-    err = ring.QueueSQE(Accept(socketFd, 0), 0, 0)
+    err = ring.QueueSQE(uring.Accept(socketFd, 0), 0, 0)
     noErr(err)
 
     // submit all SQ new entries
