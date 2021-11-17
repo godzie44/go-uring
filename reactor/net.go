@@ -38,7 +38,8 @@ func (ud RequestID) opcode() uring.OpCode {
 	return uring.OpCode(ud >> 32)
 }
 
-//NetworkReactor .
+//NetworkReactor is event loop's manager with main responsibility - handling client requests and return responses asynchronously.
+//NetworkReactor optimized for network operations like Accept, Recv, Send.
 type NetworkReactor struct {
 	tickDuration time.Duration
 	loops        []*ringNetEventLoop
@@ -52,6 +53,7 @@ func (r *NetworkReactor) setTickDuration(duration time.Duration) {
 	r.tickDuration = duration
 }
 
+//NewNet create NetworkReactor instance.
 func NewNet(rings []*uring.Ring, opts ...ReactorOption) (*NetworkReactor, error) {
 	for _, ring := range rings {
 		if err := checkRingReq(ring, true); err != nil {
@@ -78,6 +80,7 @@ func NewNet(rings []*uring.Ring, opts ...ReactorOption) (*NetworkReactor, error)
 	return r, nil
 }
 
+//Run start NetworkReactor.
 func (r *NetworkReactor) Run(ctx context.Context) {
 	defer close(r.errChan)
 
@@ -98,6 +101,7 @@ func (r *NetworkReactor) Errors() chan error {
 	return r.errChan
 }
 
+//NetOperation must be implemented by NetworkReactor supported operations.
 type NetOperation interface {
 	uring.Operation
 	Fd() int
@@ -114,25 +118,33 @@ type subSqeRequest struct {
 func (r *NetworkReactor) queue(op NetOperation, timeout time.Duration) RequestID {
 	ud := reqIDFromFdAndType(op.Fd(), op.Code())
 
-	loop := r.LoopForFd(op.Fd())
+	loop := r.loopForFd(op.Fd())
 	loop.reqBuss <- subSqeRequest{op, 0, uint64(ud), timeout}
 
 	return ud
 }
 
-func (r *NetworkReactor) LoopForFd(fd int) *ringNetEventLoop {
+func (r *NetworkReactor) loopForFd(fd int) *ringNetEventLoop {
 	n := len(r.loops)
 	return r.loops[fd%n]
 }
 
+//RegisterSocket this method must be called for all sockets interacting with the NetworkReactor.
+//fd - socket file descriptor.
+//readChan - result channel for read operations (Accept, Recv).
+//writeChan - result channel for write operations (Send).
 func (r *NetworkReactor) RegisterSocket(fd int, readChan, writeChan chan<- uring.CQEvent) {
 	r.registry.add(fd, readChan, writeChan)
 }
 
+//Queue io_uring operation.
+//Return RequestID which can be used as the SQE identifier.
 func (r *NetworkReactor) Queue(op NetOperation) RequestID {
 	return r.queue(op, time.Duration(0))
 }
 
+//QueueWithDeadline io_uring operation.
+//After a deadline time, a CQE with the error ECANCELED will be placed in the channel retChan.
 func (r *NetworkReactor) QueueWithDeadline(op NetOperation, deadline time.Time) RequestID {
 	if deadline.IsZero() {
 		return r.Queue(op)
@@ -141,8 +153,10 @@ func (r *NetworkReactor) QueueWithDeadline(op NetOperation, deadline time.Time) 
 	return r.queue(op, time.Until(deadline))
 }
 
+//Cancel queued operation.
+//id - SQE id returned by Queue method.
 func (r *NetworkReactor) Cancel(id RequestID) {
-	loop := r.LoopForFd(id.fd())
+	loop := r.loopForFd(id.fd())
 	loop.cancel(id)
 }
 

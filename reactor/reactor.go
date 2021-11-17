@@ -19,12 +19,14 @@ type tuner interface {
 
 type ReactorOption func(r tuner)
 
+//WithTickTimeout set tick duration for event loop.
 func WithTickTimeout(duration time.Duration) ReactorOption {
 	return func(r tuner) {
 		r.setTickDuration(duration)
 	}
 }
 
+//Reactor is event loop's manager with main responsibility - handling client requests and return responses asynchronously.
 type Reactor struct {
 	tickDuration time.Duration
 	loops        []*ringEventLoop
@@ -39,6 +41,9 @@ func (r *Reactor) setTickDuration(duration time.Duration) {
 	r.tickDuration = duration
 }
 
+//New create new reactor instance.
+//rings - io_uring instances. The reactor will create one event loop for each instance.
+//opts - reactor options.
 func New(rings []*uring.Ring, opts ...ReactorOption) (*Reactor, error) {
 	for _, ring := range rings {
 		if err := checkRingReq(ring, false); err != nil {
@@ -63,6 +68,7 @@ func New(rings []*uring.Ring, opts ...ReactorOption) (*Reactor, error) {
 	return r, nil
 }
 
+//Run start reactor.
 func (r *Reactor) Run(ctx context.Context) {
 	defer close(r.errChan)
 
@@ -86,22 +92,26 @@ func (r *Reactor) Errors() chan error {
 func (r *Reactor) queue(op uring.Operation, timeout time.Duration, retChan chan uring.CQEvent) (uint64, error) {
 	nonce := r.nextNonce()
 
-	loop := r.LoopForNonce(nonce)
+	loop := r.loopForNonce(nonce)
 
 	err := loop.Queue(subSqeRequest{op, 0, nonce, timeout}, retChan)
 
 	return nonce, err
 }
 
-func (r *Reactor) LoopForNonce(nonce uint64) *ringEventLoop {
+func (r *Reactor) loopForNonce(nonce uint64) *ringEventLoop {
 	n := len(r.loops)
 	return r.loops[nonce%uint64(n)]
 }
 
+//Queue io_uring operation. Response will return into retChan (in CQE form).
+//Return uint64 which can be used as the SQE identifier.
 func (r *Reactor) Queue(op uring.Operation, retChan chan uring.CQEvent) (uint64, error) {
 	return r.queue(op, time.Duration(0), retChan)
 }
 
+//QueueWithDeadline io_uring operation. The response will return into retChan (in CQE form).
+//After a deadline time, a CQE with the error ECANCELED will be placed in the channel retChan.
 func (r *Reactor) QueueWithDeadline(op uring.Operation, deadline time.Time, retChan chan uring.CQEvent) (uint64, error) {
 	if deadline.IsZero() {
 		return r.Queue(op, retChan)
@@ -110,8 +120,10 @@ func (r *Reactor) QueueWithDeadline(op uring.Operation, deadline time.Time, retC
 	return r.queue(op, time.Until(deadline), retChan)
 }
 
+//Cancel queued operation.
+//nonce - SQE id returned by Queue method.
 func (r *Reactor) Cancel(nonce uint64) error {
-	loop := r.LoopForNonce(nonce)
+	loop := r.loopForNonce(nonce)
 	return loop.cancel(nonce)
 }
 
