@@ -13,6 +13,18 @@ import (
 	"time"
 )
 
+type tuner interface {
+	setTickDuration(duration time.Duration)
+}
+
+type ReactorOption func(r tuner)
+
+func WithTickTimeout(duration time.Duration) ReactorOption {
+	return func(r tuner) {
+		r.setTickDuration(duration)
+	}
+}
+
 type Reactor struct {
 	tickDuration time.Duration
 	loops        []*ringEventLoop
@@ -21,6 +33,10 @@ type Reactor struct {
 	nonceLock    sync.Mutex
 
 	errChan chan error
+}
+
+func (r *Reactor) setTickDuration(duration time.Duration) {
+	r.tickDuration = duration
 }
 
 func New(rings []*uring.Ring, opts ...ReactorOption) (*Reactor, error) {
@@ -38,6 +54,10 @@ func New(rings []*uring.Ring, opts ...ReactorOption) (*Reactor, error) {
 	for _, ring := range rings {
 		loop := newRingEventLoop(ring, r.errChan, r.tickDuration)
 		r.loops = append(r.loops, loop)
+	}
+
+	for _, opt := range opts {
+		opt(r)
 	}
 
 	return r, nil

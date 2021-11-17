@@ -21,6 +21,7 @@ const (
 	cqeBuffSize = 1 << 7
 )
 
+//RequestID identifier of SQE queued into NetworkReactor.
 type RequestID uint64
 
 // expected fd real size is int32
@@ -37,6 +38,7 @@ func (ud RequestID) opcode() uring.OpCode {
 	return uring.OpCode(ud >> 32)
 }
 
+//NetworkReactor .
 type NetworkReactor struct {
 	tickDuration time.Duration
 	loops        []*ringNetEventLoop
@@ -46,12 +48,8 @@ type NetworkReactor struct {
 	errChan chan error
 }
 
-type ReactorOption func(r *NetworkReactor)
-
-func WithTickTimeout(duration time.Duration) ReactorOption {
-	return func(r *NetworkReactor) {
-		r.tickDuration = duration
-	}
+func (r *NetworkReactor) setTickDuration(duration time.Duration) {
+	r.tickDuration = duration
 }
 
 func NewNet(rings []*uring.Ring, opts ...ReactorOption) (*NetworkReactor, error) {
