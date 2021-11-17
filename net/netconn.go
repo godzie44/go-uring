@@ -59,12 +59,9 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 
 	c.lastReadOpID = c.reactor.QueueWithDeadline(op, c.readDeadline)
 
-	//	fmt.Println(c.fd, "read b", len(b), "nonce", c.lastReadOpNonce)
-
 	cqe := <-c.readChan
 	if err = cqe.Error(); err != nil {
 		if errors.Is(err, syscall.ECANCELED) {
-			//			fmt.Println("CONN TIMEOUT!")
 			err = fmt.Errorf("%w: %s", os.ErrDeadlineExceeded, err.Error())
 		}
 
@@ -75,8 +72,6 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 		err = &net.OpError{Op: "read", Net: "tcp", Source: c.lAddr, Addr: c.rAddr, Err: io.EOF}
 	}
 
-	//	fmt.Println("read b. ", "fd", c.fd, "res", cqe.Res, "nonce", c.lastReadOpNonce)
-
 	runtime.KeepAlive(b)
 	return int(cqe.Res), err
 }
@@ -85,8 +80,6 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
-	//	fmt.Println(c.fd, "write b", len(b))
-	//	fmt.Println("write b. ", "fd", c.fd, "str ", string(b[:30])+"...")
 	op := c.sendOp
 	op.SetBuffer(b)
 

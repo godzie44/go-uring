@@ -176,14 +176,3 @@ func (l *Listener) Close() (err error) {
 func (l *Listener) Addr() net.Addr {
 	return l.addr
 }
-
-func joinErr(err1, err2 error) error {
-	if err1 == nil {
-		return err2
-	}
-	if err2 == nil {
-		return err1
-	}
-
-	return fmt.Errorf("multiple errors: %w and %s", err1, err2.Error())
-}
