@@ -35,7 +35,7 @@ const (
 	opConnect
 	opFAllocate
 	opOpenAt
-	opClose
+	CloseCode
 	opFilesUpdate
 	opStatX
 	opRead
@@ -330,4 +330,24 @@ func (op *ProvideBuffersOp) PrepSQE(sqe *SQEntry) {
 
 func (op *ProvideBuffersOp) Code() OpCode {
 	return ProvideBuffersCode
+}
+
+//CloseOp closes a file descriptor, equivalent of a close(2) system call.
+type CloseOp struct {
+	fd uintptr
+}
+
+//Close closes a file descriptor, equivalent of a close(2) system call.
+func Close(fd uintptr) *CloseOp {
+	return &CloseOp{
+		fd: fd,
+	}
+}
+
+func (op *CloseOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(CloseCode, int32(op.fd), 0, 0, 0)
+}
+
+func (op *CloseOp) Code() OpCode {
+	return CloseCode
 }
