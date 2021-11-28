@@ -1,4 +1,4 @@
-## GO-URING.
+## GO-URING
 
 ### About
 This project is a port of [liburing](https://github.com/axboe/liburing) for GO.
@@ -73,6 +73,22 @@ for {
 ```
 
 - Look more examples in tests and example folder
+
+#### Release/Acquire semantic
+
+Model of GO atomic is more strict than atomics using in liburing. Currently, there is no public description of memory model for atomics, 
+but with this articles ([1](https://research.swtch.com/gomm), [2](https://github.com/golang/go/issues/5045)), we know that the implementation of GO atomics is the same as default (seq_cst) atomics in C/C++. 
+But liburing use less strict semantic (explained [here](https://kernel.dk/io_uring.pdf)) - memory_order_acquire/memory_order_release in C/C++ memory model. Certainly, we can use
+GO atomics as is (because of strict semantic), but this entails some overhead costs.
+
+This lib provides experimental realization of memory_order_acquire/memory_order_release atomics for amd64 arch, you can enable it
+by adding build tag amd64_atomic. It is based on the fact that MOV instructions are enough to implement memory_order_acquire/memory_order_release on the amd64 architecture ([link](https://www.cl.cam.ac.uk/~pes20/cpp/cpp0xmappings.html)). For example:
+
+```sh
+  go test --tags amd64_atomic ./...
+```
+
+This can give about 1%-3% performance gain.
 
 ### reactor package
 

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -28,7 +27,7 @@ type sq struct {
 }
 
 func (s *sq) cqNeedFlush() bool {
-	return atomic.LoadUint32(s.kFlags)&sqCQOverflow != 0
+	return ReadOnceUint32(s.kFlags)&sqCQOverflow != 0
 }
 
 type cq struct {
@@ -44,7 +43,7 @@ type cq struct {
 }
 
 func (c *cq) readyCount() uint32 {
-	return atomic.LoadUint32(c.kTail) - atomic.LoadUint32(c.kHead)
+	return SmpLoadAcquireUint32(c.kTail) - SmpLoadAcquireUint32(c.kHead)
 }
 
 const MaxEntries uint32 = 1 << 15
@@ -162,7 +161,7 @@ var ErrSQOverflow = errors.New("sq ring overflow")
 
 //NextSQE return pointer of the next available SQE in SQ queue.
 func (r *Ring) NextSQE() (entry *SQEntry, err error) {
-	head := atomic.LoadUint32(r.sqRing.kHead)
+	head := SmpLoadAcquireUint32(r.sqRing.kHead)
 	next := r.sqRing.sqeTail + 1
 
 	if next-head <= *r.sqRing.kRingEntries {
@@ -216,7 +215,7 @@ func (r *Ring) needsEnter(flags *uint32) bool {
 	if r.Params.flags&setupSQPoll == 0 {
 		return true
 	}
-	if atomic.LoadUint32(r.sqRing.kFlags)&sqNeedWakeup != 0 {
+	if ReadOnceUint32(r.sqRing.kFlags)&sqNeedWakeup != 0 {
 		*flags |= sysRingEnterSQWakeup
 		return true
 	}
@@ -227,11 +226,11 @@ var _sizeOfUint32 = unsafe.Sizeof(uint32(0))
 
 func (r *Ring) flushSQ() uint32 {
 	mask := *r.sqRing.kRingMask
-	tail := atomic.LoadUint32(r.sqRing.kTail)
+	tail := SmpLoadAcquireUint32(r.sqRing.kTail)
 	subCnt := r.sqRing.sqeTail - r.sqRing.sqeHead
 
 	if subCnt == 0 {
-		return tail - atomic.LoadUint32(r.sqRing.kHead)
+		return tail - SmpLoadAcquireUint32(r.sqRing.kHead)
 	}
 
 	for i := subCnt; i > 0; i-- {
@@ -240,9 +239,9 @@ func (r *Ring) flushSQ() uint32 {
 		r.sqRing.sqeHead++
 	}
 
-	atomic.StoreUint32(r.sqRing.kTail, tail)
+	SmpStoreReleaseUint32(r.sqRing.kTail, tail)
 
-	return tail - atomic.LoadUint32(r.sqRing.kHead)
+	return tail - SmpLoadAcquireUint32(r.sqRing.kHead)
 }
 
 type getParams struct {
@@ -381,7 +380,7 @@ func (r *Ring) SeenCQE(cqe *CQEvent) {
 
 //AdvanceCQ dequeue CQ on n entry.
 func (r *Ring) AdvanceCQ(n uint32) {
-	atomic.AddUint32(r.cqRing.kHead, n)
+	SmpStoreReleaseUint32(r.cqRing.kHead, *r.cqRing.kHead+n)
 }
 
 func (r *Ring) peekCQEvent() (uint32, *CQEvent, error) {
@@ -391,8 +390,8 @@ func (r *Ring) peekCQEvent() (uint32, *CQEvent, error) {
 
 	var err error
 	for {
-		tail := atomic.LoadUint32(r.cqRing.kTail)
-		head := atomic.LoadUint32(r.cqRing.kHead)
+		tail := SmpLoadAcquireUint32(r.cqRing.kTail)
+		head := SmpLoadAcquireUint32(r.cqRing.kHead)
 
 		cqe = nil
 		available = tail - head
@@ -423,8 +422,8 @@ func (r *Ring) peekCQEventBatch(buff []*CQEvent) int {
 	count := min(uint32(len(buff)), ready)
 
 	if ready != 0 {
-		head := atomic.LoadUint32(r.cqRing.kHead)
-		mask := atomic.LoadUint32(r.cqRing.kRingMask)
+		head := SmpLoadAcquireUint32(r.cqRing.kHead)
+		mask := SmpLoadAcquireUint32(r.cqRing.kRingMask)
 
 		last := head + count
 		for i := 0; head != last; head, i = head+1, i+1 {
