@@ -28,7 +28,7 @@ type NetworkReactorTestSuite struct {
 }
 
 func (ts *NetworkReactorTestSuite) SetupTest() {
-	rings, defers, err := uring.CreateMany(4, 64)
+	rings, defers, err := uring.CreateMany(4, 64, 4)
 	ts.Require().NoError(err)
 	ts.defers = defers
 

@@ -3,11 +3,12 @@
 ### About
 This project is a port of [liburing](https://github.com/axboe/liburing) for GO.
 
-The project contains three packages:
-1. uring - low-level io_uring API. This API is similar to libruing API.
-2. reactor - high-level API - realization of event loop pattern with io_uring.
-3. net - this is a realization of net.Listener and net.Conn interfaces with io_uring. This can be used, for example, to run an HTTP server with io_uring inside.
-
+The project contains:
+1. [uring package](#uring-package) - low-level io_uring API. This API is similar to libruing API.
+2. [reactor package](#reactor-package) - high-level API - realization of event loop pattern with io_uring.
+3. [net](#net-package) - this is a realization of net.Listener and net.Conn interfaces with io_uring. This can be used, for example, to run an HTTP server with io_uring inside.
+4. Examples and benchmarks:
+   1. [Echo server](#tcp-echo-server)
 ### uring package
 
 Package uring is a port of liburing. It provides low-level functionality for working with io_uring.
@@ -85,12 +86,12 @@ This lib provides experimental realization of memory_order_acquire/memory_order_
 by adding build tag amd64_atomic. It is based on the fact that MOV instructions are enough to implement memory_order_acquire/memory_order_release on the amd64 architecture ([link](https://www.cl.cam.ac.uk/~pes20/cpp/cpp0xmappings.html)). For example:
 
 ```sh
-  go test --tags amd64_atomic ./...
+  go test -v -tags amd64_atomic ./...
 ```
 
 This can give about 1%-3% performance gain.
 
-### reactor package
+### reactor package 
 
 Reactor - is event loop with io_uring inside it. Currently, there are two reactors in this package:
 1. Reactor - generic event loop, give a possibility to work with all io_uring operations.
@@ -101,3 +102,10 @@ Reactor - is event loop with io_uring inside it. Currently, there are two reacto
 This is the realization of net.Listener and net.Conn interfaces. It exists NetReactor inside. Please check the example of HTTP server and benchmarks to familiarize yourself with it.
 
 ### Examples and benchmarks
+
+#### TCP echo-server
+
+Echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring. 
+See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-server/main.go) and [benchmarks](https://github.com/godzie44/go-uring/blob/master/example/echo-server/benchmark.md) for familiarization.
+
+#### HTTP server
