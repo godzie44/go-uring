@@ -21,19 +21,41 @@ func TestCreateRing(t *testing.T) {
 }
 
 func TestCreateManyRings(t *testing.T) {
-	rings, closeFn, err := CreateMany(4, 64)
-	require.NoError(t, err)
-
-	for _, r := range rings {
-		assert.NotEqual(t, 0, r.Fd())
+	type testCase struct {
+		ringCnt               int
+		workerPoolCnt         int
+		expectedAppendedWQCnt int
+	}
+	testCases := []testCase{
+		{ringCnt: 4, workerPoolCnt: 4, expectedAppendedWQCnt: 0},
+		{ringCnt: 4, workerPoolCnt: 2, expectedAppendedWQCnt: 2},
+		{ringCnt: 4, workerPoolCnt: 1, expectedAppendedWQCnt: 3},
 	}
 
-	err = closeFn()
-	require.NoError(t, err)
+	for _, tc := range testCases {
+		rings, closeFn, err := CreateMany(tc.ringCnt, 64, tc.workerPoolCnt)
+		require.NoError(t, err)
 
-	for _, r := range rings {
-		err = syscall.Close(r.Fd())
-		assert.ErrorIs(t, err, syscall.EBADF)
+		assert.Len(t, rings, tc.ringCnt)
+		for _, r := range rings {
+			assert.NotEqual(t, 0, r.Fd())
+		}
+
+		var appendedWQs int
+		for _, r := range rings {
+			if r.Params.wqFD != 0 {
+				appendedWQs++
+			}
+		}
+		assert.Equal(t, appendedWQs, tc.expectedAppendedWQCnt)
+
+		err = closeFn()
+		require.NoError(t, err)
+
+		for _, r := range rings {
+			err = syscall.Close(r.Fd())
+			assert.ErrorIs(t, err, syscall.EBADF)
+		}
 	}
 }
 

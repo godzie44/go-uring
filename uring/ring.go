@@ -120,20 +120,47 @@ func New(entries uint32, opts ...SetupOption) (*Ring, error) {
 
 type Defer func() error
 
-//CreateMany create cnt io_uring instances.
-func CreateMany(cnt int, entries uint32, opts ...SetupOption) ([]*Ring, Defer, error) {
+//CreateMany create multiple io_uring instances. Entries - size of SQ and CQ buffers.
+//count - the number of io_uring instances. wpCount - the number of worker pools, this value must be a multiple of the entries.
+//If workerCount < count worker pool will be shared with setupAttachWQ flag.
+func CreateMany(count int, entries uint32, wpCount int, opts ...SetupOption) ([]*Ring, Defer, error) {
+	if wpCount > count {
+		return nil, nil, errors.New("number of io_uring instances must be greater or equal number of worker pools")
+	}
+	if count%wpCount != 0 {
+		return nil, nil, errors.New("number of worker pools must be a multiple of the entries")
+	}
+
+	instancePerPool := count / wpCount
+
 	var defers = map[int]func() error{}
 	var rings []*Ring
-	for i := 0; i < cnt; i++ {
-		r, err := New(entries, opts...)
+	for i := 0; i < count; i++ {
+		mainRing, err := New(entries, opts...)
 		if err != nil {
 			for _, closeFn := range defers {
 				_ = closeFn()
 			}
 			return nil, nil, err
 		}
-		defers[r.fd] = r.Close
-		rings = append(rings, r)
+		defers[mainRing.fd] = mainRing.Close
+		rings = append(rings, mainRing)
+
+		if instancePerPool > 1 {
+			for j := 1; j < instancePerPool; j++ {
+				additionalRing, err := New(entries, append(opts, WithAttachedWQ(mainRing.fd))...)
+				if err != nil {
+					for _, closeFn := range defers {
+						_ = closeFn()
+					}
+					return nil, nil, err
+				}
+				defers[additionalRing.fd] = additionalRing.Close
+				rings = append(rings, additionalRing)
+
+				i++
+			}
+		}
 	}
 
 	return rings, func() (err error) {
