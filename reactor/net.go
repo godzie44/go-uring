@@ -1,14 +1,14 @@
 //go:build linux
 
-package uring
+package reactor
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/godzie44/go-uring/uring"
 	"math"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -21,12 +21,11 @@ const (
 	cqeBuffSize = 1 << 7
 )
 
-//RequestID identifier of SQE queued into NetworkReactor.
+//RequestID identifier of operation queued into NetworkReactor.
 type RequestID uint64
 
-// expected fd real size is int32
-func reqIDFromFdAndType(fd int, opcode uring.OpCode) RequestID {
-	return RequestID(uint64(fd) | uint64(opcode)<<32)
+func packRequestID(fd int, nonce uint32) RequestID {
+	return RequestID(uint64(fd) | uint64(nonce)<<32)
 }
 
 func (ud RequestID) fd() int {
@@ -34,27 +33,22 @@ func (ud RequestID) fd() int {
 	return int(uint64(ud) & mask)
 }
 
-func (ud RequestID) opcode() uring.OpCode {
-	return uring.OpCode(ud >> 32)
+func (ud RequestID) nonce() uint32 {
+	return uint32(ud >> 32)
 }
 
 //NetworkReactor is event loop's manager with main responsibility - handling client requests and return responses asynchronously.
 //NetworkReactor optimized for network operations like Accept, Recv, Send.
 type NetworkReactor struct {
-	tickDuration time.Duration
-	loops        []*ringNetEventLoop
+	loops []*ringNetEventLoop
 
 	registry *registry
 
-	errChan chan error
-}
-
-func (r *NetworkReactor) setTickDuration(duration time.Duration) {
-	r.tickDuration = duration
+	config *configuration
 }
 
 //NewNet create NetworkReactor instance.
-func NewNet(rings []*uring.Ring, opts ...ReactorOption) (*NetworkReactor, error) {
+func NewNet(rings []*uring.Ring, opts ...Option) (*NetworkReactor, error) {
 	for _, ring := range rings {
 		if err := checkRingReq(ring, true); err != nil {
 			return nil, err
@@ -62,19 +56,21 @@ func NewNet(rings []*uring.Ring, opts ...ReactorOption) (*NetworkReactor, error)
 	}
 
 	r := &NetworkReactor{
-		tickDuration: time.Millisecond * 1,
-		errChan:      make(chan error, 128),
+		config: &configuration{
+			tickDuration: time.Millisecond * 1,
+			logger:       &nopLogger{},
+		},
 	}
 
 	r.registry = newRegistry(len(rings))
 
-	for _, ring := range rings {
-		loop := newRingNetEventLoop(ring, r.errChan, r.registry, r.tickDuration)
-		r.loops = append(r.loops, loop)
+	for _, opt := range opts {
+		opt(r.config)
 	}
 
-	for _, opt := range opts {
-		opt(r)
+	for _, ring := range rings {
+		loop := newRingNetEventLoop(ring, r.config.logger, r.registry)
+		r.loops = append(r.loops, loop)
 	}
 
 	return r, nil
@@ -82,10 +78,8 @@ func NewNet(rings []*uring.Ring, opts ...ReactorOption) (*NetworkReactor, error)
 
 //Run start NetworkReactor.
 func (r *NetworkReactor) Run(ctx context.Context) {
-	defer close(r.errChan)
-
 	for _, loop := range r.loops {
-		go loop.runReader()
+		go loop.runReader(r.config.tickDuration)
 		go loop.runWriter()
 	}
 
@@ -95,10 +89,6 @@ func (r *NetworkReactor) Run(ctx context.Context) {
 		loop.stopReader()
 		loop.stopWriter()
 	}
-}
-
-func (r *NetworkReactor) Errors() chan error {
-	return r.errChan
 }
 
 //NetOperation must be implemented by NetworkReactor supported operations.
@@ -115,8 +105,8 @@ type subSqeRequest struct {
 	timeout time.Duration
 }
 
-func (r *NetworkReactor) queue(op NetOperation, timeout time.Duration) RequestID {
-	ud := reqIDFromFdAndType(op.Fd(), op.Code())
+func (r *NetworkReactor) queue(op NetOperation, cb Callback, timeout time.Duration) RequestID {
+	ud := packRequestID(op.Fd(), r.registry.add(op.Fd(), cb))
 
 	loop := r.loopForFd(op.Fd())
 	loop.reqBuss <- subSqeRequest{op, 0, uint64(ud), timeout}
@@ -129,28 +119,20 @@ func (r *NetworkReactor) loopForFd(fd int) *ringNetEventLoop {
 	return r.loops[fd%n]
 }
 
-//RegisterSocket this method must be called for all sockets interacting with the NetworkReactor.
-//fd - socket file descriptor.
-//readChan - result channel for read operations (Accept, Recv).
-//writeChan - result channel for write operations (Send).
-func (r *NetworkReactor) RegisterSocket(fd int, readChan, writeChan chan<- uring.CQEvent) {
-	r.registry.add(fd, readChan, writeChan)
-}
-
 //Queue io_uring operation.
 //Return RequestID which can be used as the SQE identifier.
-func (r *NetworkReactor) Queue(op NetOperation) RequestID {
-	return r.queue(op, time.Duration(0))
+func (r *NetworkReactor) Queue(op NetOperation, cb Callback) RequestID {
+	return r.queue(op, cb, time.Duration(0))
 }
 
 //QueueWithDeadline io_uring operation.
-//After a deadline time, a CQE with the error ECANCELED will be placed in the channel retChan.
-func (r *NetworkReactor) QueueWithDeadline(op NetOperation, deadline time.Time) RequestID {
+//After a deadline time, a CQE with the error ECANCELED will be placed in the callback function.
+func (r *NetworkReactor) QueueWithDeadline(op NetOperation, cb Callback, deadline time.Time) RequestID {
 	if deadline.IsZero() {
-		return r.Queue(op)
+		return r.Queue(op, cb)
 	}
 
-	return r.queue(op, time.Until(deadline))
+	return r.queue(op, cb, time.Until(deadline))
 }
 
 //Cancel queued operation.
@@ -160,116 +142,112 @@ func (r *NetworkReactor) Cancel(id RequestID) {
 	loop.cancel(id)
 }
 
-type sockInfo struct {
-	fd        int
-	readChan  chan<- uring.CQEvent
-	writeChan chan<- uring.CQEvent
-}
+type cbMap map[uint32]Callback
 
 type registry struct {
-	data    [][]sockInfo
+	data [][]cbMap
+
+	nonces [][]uint32
+	locks  []*sync.Mutex
+
 	granCnt int
 }
 
 func newRegistry(granularity int) *registry {
-	buff := make([][]sockInfo, granularity)
+	buff := make([][]cbMap, granularity)
+	locks := make([]*sync.Mutex, granularity)
+	nl := make([][]uint32, granularity)
+
 	for i := range buff {
-		buff[i] = make([]sockInfo, 1<<16)
+		buff[i] = make([]cbMap, 1<<16)
+		for j := range buff[i] {
+			buff[i][j] = make(cbMap, 10)
+		}
+
+		nl[i] = make([]uint32, 1<<16)
+		locks[i] = &sync.Mutex{}
 	}
+
 	return &registry{
 		data:    buff,
+		nonces:  nl,
 		granCnt: granularity,
+		locks:   locks,
 	}
 }
 
-func (r *registry) add(fd int, readChan chan<- uring.CQEvent, writeChan chan<- uring.CQEvent) {
+func (r *registry) add(fd int, cb Callback) uint32 {
 	granule := fd % r.granCnt
 	idx := fd / r.granCnt
 
-	r.data[granule][idx].fd = fd
-	r.data[granule][idx].readChan = readChan
-	r.data[granule][idx].writeChan = writeChan
+	n := atomic.AddUint32(&r.nonces[granule][fd], 1)
+
+	r.locks[granule].Lock()
+	r.data[granule][idx][n] = cb
+	r.locks[granule].Unlock()
+
+	return n
 }
 
-func (r *registry) get(fd int) *sockInfo {
+func (r *registry) pop(fd int, nonce uint32) Callback {
 	granule := fd % r.granCnt
 	idx := fd / r.granCnt
 
-	return &r.data[granule][idx]
+	r.locks[granule].Lock()
+	cb := r.data[granule][idx][nonce]
+	delete(r.data[granule][idx], nonce)
+	r.locks[granule].Unlock()
+
+	return cb
 }
 
 type ringNetEventLoop struct {
-	fdDivider int
+	ring *uring.Ring
 
 	registry *registry
 
 	reqBuss      chan subSqeRequest
 	submitSignal chan struct{}
 
-	ring         *uring.Ring
-	tickDuration time.Duration
-
-	errChan chan<- error
-
 	stopReaderChan chan struct{}
 	stopWriterChan chan struct{}
 
-	needSubmit uint32
+	submitAllowed uint32
+
+	log Logger
 }
 
-func newRingNetEventLoop(ring *uring.Ring, errChan chan<- error, sockRegistry *registry, tickDuration time.Duration) *ringNetEventLoop {
+func newRingNetEventLoop(ring *uring.Ring, logger Logger, sockRegistry *registry) *ringNetEventLoop {
 	return &ringNetEventLoop{
 		ring:           ring,
-		tickDuration:   tickDuration,
-		reqBuss:        make(chan subSqeRequest, 256),
+		reqBuss:        make(chan subSqeRequest, 1<<8),
 		submitSignal:   make(chan struct{}),
 		stopReaderChan: make(chan struct{}),
 		stopWriterChan: make(chan struct{}),
 		registry:       sockRegistry,
-		errChan:        errChan,
+		log:            logger,
 	}
 }
 
-func (loop *ringNetEventLoop) addFd(fd int, readChan, writeChan chan<- uring.CQEvent) {
-	loop.registry.add(fd, readChan, writeChan)
-}
-
-type RingError struct {
-	Err    error
-	RingFd int
-}
-
-func (r *RingError) Error() string {
-	return fmt.Sprintf("%s, ring fd: %d", r.Err.Error(), r.RingFd)
-}
-
-type RingQueueError struct {
-	RingError
-	OpCode uring.OpCode
-	ID     uint64
-}
-
-func (r *RingQueueError) Error() string {
-	return fmt.Sprintf("%s, ring fd: %d", r.Err.Error(), r.RingFd)
-}
-
-func (loop *ringNetEventLoop) runReader() {
-	runtime.LockOSThread()
+func (loop *ringNetEventLoop) runReader(tickDuration time.Duration) {
+	//runtime.LockOSThread()
 
 	cqeBuff := make([]*uring.CQEvent, cqeBuffSize)
 	for {
 		loop.submitSignal <- struct{}{}
 
-		_, err := loop.ring.WaitCQEventsWithTimeout(1, loop.tickDuration)
+		_, err := loop.ring.WaitCQEventsWithTimeout(1, tickDuration)
 		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.ETIME) {
 			runtime.Gosched()
 			goto CheckCtxAndContinue
 		}
 
 		if err != nil {
-			loop.errChan <- err
+			loop.log.Log("io_uring", loop.ring.Fd(), "wait cqe", err)
 			goto CheckCtxAndContinue
 		}
+
+		loop.submitSignal <- struct{}{}
 
 		for n := loop.ring.PeekCQEventBatch(cqeBuff); n > 0; n = loop.ring.PeekCQEventBatch(cqeBuff) {
 			for i := 0; i < n; i++ {
@@ -280,20 +258,12 @@ func (loop *ringNetEventLoop) runReader() {
 				}
 
 				id := RequestID(cqe.UserData)
-				event := uring.CQEvent{
+				cb := loop.registry.pop(id.fd(), id.nonce())
+				cb(uring.CQEvent{
 					UserData: cqe.UserData,
 					Res:      cqe.Res,
 					Flags:    cqe.Flags,
-				}
-
-				sock := loop.registry.get(id.fd())
-
-				switch id.opcode() {
-				case uring.AcceptCode, uring.RecvCode:
-					sock.readChan <- event
-				case uring.SendCode:
-					sock.writeChan <- event
-				}
+				})
 			}
 
 			loop.ring.AdvanceCQ(uint32(n))
@@ -330,6 +300,8 @@ func (loop *ringNetEventLoop) cancel(id RequestID) {
 }
 
 func (loop *ringNetEventLoop) runWriter() {
+	runtime.LockOSThread()
+
 	defer close(loop.reqBuss)
 	defer close(loop.submitSignal)
 
@@ -337,7 +309,7 @@ func (loop *ringNetEventLoop) runWriter() {
 	for {
 		select {
 		case req := <-loop.reqBuss:
-			atomic.StoreUint32(&loop.needSubmit, 1)
+			atomic.StoreUint32(&loop.submitAllowed, 1)
 
 			if req.timeout == 0 {
 				err = loop.ring.QueueSQE(req.op, req.flags, req.userData)
@@ -349,17 +321,23 @@ func (loop *ringNetEventLoop) runWriter() {
 			}
 
 			if err != nil {
-				loop.errChan <- &RingQueueError{
-					RingError{err, loop.ring.Fd()}, req.op.Code(), req.userData,
-				}
+				id := RequestID(req.userData)
+				loop.registry.pop(id.fd(), id.nonce())
+				loop.log.Log("io_uring", loop.ring.Fd(), "queue operation", err)
 			}
+
 		case <-loop.submitSignal:
-			if atomic.CompareAndSwapUint32(&loop.needSubmit, 1, 0) {
+			if atomic.CompareAndSwapUint32(&loop.submitAllowed, 1, 0) {
 				_, err = loop.ring.Submit()
 				if err != nil {
-					loop.errChan <- &RingError{err, loop.ring.Fd()}
+					if errors.Is(err, syscall.EBUSY) || errors.Is(err, syscall.EAGAIN) {
+						atomic.StoreUint32(&loop.submitAllowed, 1)
+					} else {
+						loop.log.Log("io_uring", loop.ring.Fd(), "submit", err)
+					}
 				}
 			}
+
 		case <-loop.stopWriterChan:
 			close(loop.stopWriterChan)
 			return

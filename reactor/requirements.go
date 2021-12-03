@@ -1,6 +1,6 @@
 //go:build linux
 
-package uring
+package reactor
 
 import (
 	"errors"

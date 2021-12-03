@@ -1,6 +1,6 @@
 //go:build linux
 
-package uring
+package reactor
 
 import (
 	"context"
@@ -39,16 +39,10 @@ func (ts *NetworkReactorTestSuite) SetupTest() {
 	ts.stopReactor = cancel
 
 	ts.wg = &sync.WaitGroup{}
-	ts.wg.Add(2)
+	ts.wg.Add(1)
 	go func() {
 		defer ts.wg.Done()
 		ts.reactor.Run(ctx)
-	}()
-	go func() {
-		defer ts.wg.Done()
-		for err := range ts.reactor.Errors() {
-			panic(err)
-		}
 	}()
 }
 
@@ -64,10 +58,11 @@ func (ts *NetworkReactorTestSuite) TestExecuteWithDeadline() {
 	defer l.Close()
 
 	acceptChan := make(chan uring.CQEvent)
-	ts.reactor.RegisterSocket(fd, acceptChan, nil)
 
 	acceptTime := time.Now()
-	_ = ts.reactor.QueueWithDeadline(uring.Accept(uintptr(fd), 0), acceptTime.Add(time.Second))
+	_ = ts.reactor.QueueWithDeadline(uring.Accept(uintptr(fd), 0), func(event uring.CQEvent) {
+		acceptChan <- event
+	}, acceptTime.Add(time.Second))
 
 	cqe := <-acceptChan
 
@@ -82,9 +77,9 @@ func (ts *NetworkReactorTestSuite) TestCancelOperation() {
 	defer l.Close()
 
 	acceptChan := make(chan uring.CQEvent)
-	ts.reactor.RegisterSocket(fd, acceptChan, nil)
-
-	id := ts.reactor.Queue(uring.Accept(uintptr(fd), 0))
+	id := ts.reactor.Queue(uring.Accept(uintptr(fd), 0), func(event uring.CQEvent) {
+		acceptChan <- event
+	})
 
 	go func() {
 		<-time.After(time.Second)
@@ -101,24 +96,22 @@ func TestNetworkReactor(t *testing.T) {
 
 func TestRequestID(t *testing.T) {
 	type testCase struct {
-		fd     int
-		opCode uring.OpCode
+		fd    int
+		nonce uint32
 	}
 	testCases := []testCase{
-		{fd: 1, opCode: uring.NopCode},
-		{fd: 2, opCode: uring.AcceptCode},
-		{fd: 32600, opCode: uring.SendCode},
-		{fd: 128000, opCode: uring.RecvCode},
-		{fd: math.MaxInt32, opCode: uring.AsyncCancelCode},
+		{fd: 1, nonce: 1},
+		{fd: 2, nonce: 2},
+		{fd: 32600, nonce: math.MaxUint32 >> 2},
+		{fd: 128000, nonce: math.MaxUint32 >> 1},
+		{fd: math.MaxInt32, nonce: math.MaxUint32},
 	}
 
 	for _, tc := range testCases {
-		ud := reqIDFromFdAndType(tc.fd, tc.opCode)
-		if tc.opCode != uring.NopCode {
-			assert.GreaterOrEqual(t, uint64(ud), uint64(math.MaxUint32))
-		}
+		ud := packRequestID(tc.fd, tc.nonce)
+		assert.GreaterOrEqual(t, uint64(ud), uint64(math.MaxUint32))
 		assert.Equal(t, tc.fd, ud.fd())
-		assert.GreaterOrEqual(t, tc.opCode, ud.opcode())
+		assert.GreaterOrEqual(t, tc.nonce, ud.nonce())
 	}
 }
 

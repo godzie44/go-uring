@@ -4,7 +4,6 @@ package net
 
 import (
 	"context"
-	"fmt"
 	reactor "github.com/godzie44/go-uring/reactor"
 	"github.com/godzie44/go-uring/uring"
 	"golang.org/x/sys/unix"
@@ -55,23 +54,10 @@ func NewListener(lc net.ListenConfig, addr string, reactor *reactor.NetworkReact
 		acceptOp:   uring.Accept(uintptr(sockFd), 0),
 	}
 
-	reactor.RegisterSocket(sockFd, l.acceptChan, nil)
-
 	ctx, cancel := context.WithCancel(context.Background())
 
 	l.stopReactorFn = cancel
 	go reactor.Run(ctx)
-
-	go func() {
-		for {
-			select {
-			case err := <-reactor.Errors():
-				fmt.Println(err)
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
 
 	return l, nil
 }
@@ -103,7 +89,9 @@ func newSocket(tcpAddr *net.TCPAddr) (int, error) {
 }
 
 func (l *Listener) Accept() (net.Conn, error) {
-	l.reactor.Queue(l.acceptOp)
+	l.reactor.Queue(l.acceptOp, func(event uring.CQEvent) {
+		l.acceptChan <- event
+	})
 	cqe := <-l.acceptChan
 
 	if err := cqe.Error(); err != nil {
@@ -169,7 +157,7 @@ func boolint(b bool) int {
 func (l *Listener) Close() (err error) {
 	err = syscall.Close(l.sockFd)
 	l.stopReactorFn()
-	close(l.acceptChan)
+	//close(l.acceptLock)
 	return err
 }
 

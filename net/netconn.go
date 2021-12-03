@@ -25,7 +25,7 @@ type Conn struct {
 
 	readDeadline, writeDeadline time.Time
 
-	lastReadOpID, lastWriteID reactor.RequestID
+	lastReadOpID, lastWriteOpID reactor.RequestID
 
 	readOp *uring.RecvOp
 	sendOp *uring.SendOp
@@ -45,8 +45,6 @@ func newConn(fd int, lAddr, rAddr net.Addr, r *reactor.NetworkReactor) *Conn {
 		sendOp:    uring.Send(uintptr(fd), nil, 0),
 	}
 
-	r.RegisterSocket(fd, conn.readChan, conn.writeChan)
-
 	return conn
 }
 
@@ -57,9 +55,12 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 	op := c.readOp
 	op.SetBuffer(b)
 
-	c.lastReadOpID = c.reactor.QueueWithDeadline(op, c.readDeadline)
+	c.lastReadOpID = c.reactor.QueueWithDeadline(op, func(event uring.CQEvent) {
+		c.readChan <- event
+	}, c.readDeadline)
 
 	cqe := <-c.readChan
+
 	if err = cqe.Error(); err != nil {
 		if errors.Is(err, syscall.ECANCELED) {
 			err = fmt.Errorf("%w: %s", os.ErrDeadlineExceeded, err.Error())
@@ -83,9 +84,12 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	op := c.sendOp
 	op.SetBuffer(b)
 
-	c.lastWriteID = c.reactor.QueueWithDeadline(op, c.writeDeadline)
+	c.lastWriteOpID = c.reactor.QueueWithDeadline(op, func(event uring.CQEvent) {
+		c.writeChan <- event
+	}, c.writeDeadline)
 
 	cqe := <-c.writeChan
+
 	if err = cqe.Error(); err != nil {
 		if errors.Is(err, syscall.ECANCELED) {
 			err = fmt.Errorf("%w: %s", os.ErrDeadlineExceeded, err.Error())
@@ -102,9 +106,6 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *Conn) Close() error {
-	close(c.readChan)
-	close(c.writeChan)
-
 	err := syscall.Close(c.fd)
 	if err != nil {
 		err = &net.OpError{Op: "close", Net: "tcp", Source: c.lAddr, Addr: c.rAddr, Err: err}
@@ -137,7 +138,7 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 
 func (c *Conn) SetWriteDeadline(t time.Time) error {
 	if !t.IsZero() && time.Until(t) < 0 {
-		c.reactor.Cancel(c.lastWriteID)
+		c.reactor.Cancel(c.lastWriteOpID)
 	}
 
 	c.writeDeadline = t

@@ -1,6 +1,6 @@
 //go:build linux
 
-package uring
+package reactor
 
 import (
 	"context"
@@ -37,16 +37,10 @@ func (ts *ReactorTestSuite) SetupTest() {
 	ts.stopReactor = cancel
 
 	ts.wg = &sync.WaitGroup{}
-	ts.wg.Add(2)
+	ts.wg.Add(1)
 	go func() {
 		defer ts.wg.Done()
 		ts.reactor.Run(ctx)
-	}()
-	go func() {
-		defer ts.wg.Done()
-		for err := range ts.reactor.Errors() {
-			panic(err)
-		}
 	}()
 }
 
@@ -67,7 +61,9 @@ func (ts *ReactorTestSuite) TestReactorExecuteReadV() {
 	buff := make([]byte, len(expected))
 
 	resultChan := make(chan uring.CQEvent)
-	_, err = ts.reactor.Queue(uring.ReadV(f, [][]byte{buff}, 0), resultChan)
+	_, err = ts.reactor.Queue(uring.ReadV(f, [][]byte{buff}, 0), func(event uring.CQEvent) {
+		resultChan <- event
+	})
 	ts.Require().NoError(err)
 
 	cqe := <-resultChan
@@ -85,7 +81,9 @@ func (ts *ReactorTestSuite) TestExecuteWithDeadline() {
 	acceptChan := make(chan uring.CQEvent)
 
 	acceptTime := time.Now()
-	_, err = ts.reactor.QueueWithDeadline(uring.Accept(uintptr(fd), 0), acceptTime.Add(time.Second), acceptChan)
+	_, err = ts.reactor.QueueWithDeadline(uring.Accept(uintptr(fd), 0), func(event uring.CQEvent) {
+		acceptChan <- event
+	}, acceptTime.Add(time.Second))
 	ts.Require().NoError(err)
 
 	cqe := <-acceptChan
@@ -102,7 +100,9 @@ func (ts *ReactorTestSuite) TestCancelOperation() {
 
 	acceptChan := make(chan uring.CQEvent)
 
-	nonce, err := ts.reactor.Queue(uring.Accept(uintptr(fd), 0), acceptChan)
+	nonce, err := ts.reactor.Queue(uring.Accept(uintptr(fd), 0), func(event uring.CQEvent) {
+		acceptChan <- event
+	})
 	ts.Require().NoError(err)
 
 	go func() {
