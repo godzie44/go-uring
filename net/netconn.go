@@ -144,3 +144,7 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	c.writeDeadline = t
 	return nil
 }
+
+func (c *Conn) Fd() uintptr {
+	return uintptr(c.fd)
+}

@@ -19,6 +19,7 @@ const (
 	defaultTCPKeepAlive = 15 * time.Second
 )
 
+//Listener tcp listener with uring reactor inside.
 type Listener struct {
 	lc net.ListenConfig
 
@@ -40,7 +41,7 @@ func NewListener(lc net.ListenConfig, addr string, reactor *reactor.NetworkReact
 		return nil, err
 	}
 
-	sockFd, err := newSocket(tcpAddr)
+	sockFd, err := serverSocket(tcpAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +63,7 @@ func NewListener(lc net.ListenConfig, addr string, reactor *reactor.NetworkReact
 	return l, nil
 }
 
-func newSocket(tcpAddr *net.TCPAddr) (int, error) {
+func serverSocket(tcpAddr *net.TCPAddr) (int, error) {
 	sockFd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
 	if err != nil {
 		return 0, err
@@ -157,7 +158,6 @@ func boolint(b bool) int {
 func (l *Listener) Close() (err error) {
 	err = syscall.Close(l.sockFd)
 	l.stopReactorFn()
-	//close(l.acceptLock)
 	return err
 }
 
