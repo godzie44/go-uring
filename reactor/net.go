@@ -8,7 +8,6 @@ import (
 	"github.com/godzie44/go-uring/uring"
 	"math"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -42,7 +41,7 @@ func (ud RequestID) nonce() uint32 {
 type NetworkReactor struct {
 	loops []*ringNetEventLoop
 
-	registry *registry
+	registry *cbRegistry
 
 	config *configuration
 }
@@ -62,7 +61,7 @@ func NewNet(rings []*uring.Ring, opts ...Option) (*NetworkReactor, error) {
 		},
 	}
 
-	r.registry = newRegistry(len(rings))
+	r.registry = newCbRegistry(len(rings))
 
 	for _, opt := range opts {
 		opt(r.config)
@@ -142,69 +141,10 @@ func (r *NetworkReactor) Cancel(id RequestID) {
 	loop.cancel(id)
 }
 
-type cbMap map[uint32]Callback
-
-type registry struct {
-	data [][]cbMap
-
-	nonces [][]uint32
-	locks  []*sync.Mutex
-
-	granCnt int
-}
-
-func newRegistry(granularity int) *registry {
-	buff := make([][]cbMap, granularity)
-	locks := make([]*sync.Mutex, granularity)
-	nl := make([][]uint32, granularity)
-
-	for i := range buff {
-		buff[i] = make([]cbMap, 1<<16)
-		for j := range buff[i] {
-			buff[i][j] = make(cbMap, 10)
-		}
-
-		nl[i] = make([]uint32, 1<<16)
-		locks[i] = &sync.Mutex{}
-	}
-
-	return &registry{
-		data:    buff,
-		nonces:  nl,
-		granCnt: granularity,
-		locks:   locks,
-	}
-}
-
-func (r *registry) add(fd int, cb Callback) uint32 {
-	granule := fd % r.granCnt
-	idx := fd / r.granCnt
-
-	n := atomic.AddUint32(&r.nonces[granule][fd], 1)
-
-	r.locks[granule].Lock()
-	r.data[granule][idx][n] = cb
-	r.locks[granule].Unlock()
-
-	return n
-}
-
-func (r *registry) pop(fd int, nonce uint32) Callback {
-	granule := fd % r.granCnt
-	idx := fd / r.granCnt
-
-	r.locks[granule].Lock()
-	cb := r.data[granule][idx][nonce]
-	delete(r.data[granule][idx], nonce)
-	r.locks[granule].Unlock()
-
-	return cb
-}
-
 type ringNetEventLoop struct {
 	ring *uring.Ring
 
-	registry *registry
+	registry *cbRegistry
 
 	reqBuss      chan subSqeRequest
 	submitSignal chan struct{}
@@ -217,14 +157,14 @@ type ringNetEventLoop struct {
 	log Logger
 }
 
-func newRingNetEventLoop(ring *uring.Ring, logger Logger, sockRegistry *registry) *ringNetEventLoop {
+func newRingNetEventLoop(ring *uring.Ring, logger Logger, registry *cbRegistry) *ringNetEventLoop {
 	return &ringNetEventLoop{
 		ring:           ring,
 		reqBuss:        make(chan subSqeRequest, 1<<8),
 		submitSignal:   make(chan struct{}),
 		stopReaderChan: make(chan struct{}),
 		stopWriterChan: make(chan struct{}),
-		registry:       sockRegistry,
+		registry:       registry,
 		log:            logger,
 	}
 }
