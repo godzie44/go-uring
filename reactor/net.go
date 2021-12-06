@@ -78,8 +78,8 @@ func NewNet(rings []*uring.Ring, opts ...Option) (*NetworkReactor, error) {
 //Run start NetworkReactor.
 func (r *NetworkReactor) Run(ctx context.Context) {
 	for _, loop := range r.loops {
-		go loop.runReader(r.config.tickDuration)
-		go loop.runWriter()
+		go loop.runConsumer(r.config.tickDuration)
+		go loop.runPublisher()
 	}
 
 	<-ctx.Done()
@@ -169,7 +169,7 @@ func newRingNetEventLoop(ring *uring.Ring, logger Logger, registry *cbRegistry) 
 	}
 }
 
-func (loop *ringNetEventLoop) runReader(tickDuration time.Duration) {
+func (loop *ringNetEventLoop) runConsumer(tickDuration time.Duration) {
 	//runtime.LockOSThread()
 
 	cqeBuff := make([]*uring.CQEvent, cqeBuffSize)
@@ -239,7 +239,7 @@ func (loop *ringNetEventLoop) cancel(id RequestID) {
 	}
 }
 
-func (loop *ringNetEventLoop) runWriter() {
+func (loop *ringNetEventLoop) runPublisher() {
 	runtime.LockOSThread()
 
 	defer close(loop.reqBuss)

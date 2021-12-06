@@ -78,8 +78,8 @@ func New(rings []*uring.Ring, opts ...Option) (*Reactor, error) {
 //Run start reactor.
 func (r *Reactor) Run(ctx context.Context) {
 	for _, loop := range r.loops {
-		go loop.runReader(r.config.tickDuration)
-		go loop.runWriter()
+		go loop.runConsumer(r.config.tickDuration)
+		go loop.runPublisher()
 	}
 
 	<-ctx.Done()
@@ -156,7 +156,7 @@ func newRingEventLoop(ring *uring.Ring, logger Logger) *ringEventLoop {
 	}
 }
 
-func (loop *ringEventLoop) runReader(tickDuration time.Duration) {
+func (loop *ringEventLoop) runConsumer(tickDuration time.Duration) {
 	runtime.LockOSThread()
 
 	cqeBuff := make([]*uring.CQEvent, cqeBuffSize)
@@ -251,7 +251,7 @@ func (loop *ringEventLoop) Queue(req subSqeRequest, cb Callback) (err error) {
 	return err
 }
 
-func (loop *ringEventLoop) runWriter() {
+func (loop *ringEventLoop) runPublisher() {
 	runtime.LockOSThread()
 
 	defer close(loop.submitSignal)

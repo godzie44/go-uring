@@ -1,12 +1,11 @@
 package reactor
 
 type Logger interface {
-	Log(keyvals ...interface{}) error
+	Log(keyvals ...interface{})
 }
 
 type nopLogger struct {
 }
 
-func (n *nopLogger) Log(keyvals ...interface{}) error {
-	return nil
+func (n *nopLogger) Log(keyvals ...interface{}) {
 }
