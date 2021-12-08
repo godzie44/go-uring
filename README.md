@@ -8,7 +8,8 @@ The project contains:
 2. [reactor package](#reactor-package) - high-level API - realization of event loop pattern with io_uring.
 3. [net](#net-package) - this is a realization of net.Listener and net.Conn interfaces with io_uring. This can be used, for example, to run an HTTP server with io_uring inside.
 4. Examples and benchmarks:
-   1. [Echo server](#tcp-echo-server)
+   1. [Plain echo server](#plain-tcp-echo-server)
+   2. [GO-style echo server (multi thread/goroutine)](#tcp-echo-server)
 ### uring package
 
 Package uring is a port of liburing. It provides low-level functionality for working with io_uring.
@@ -77,12 +78,12 @@ for {
 
 #### Release/Acquire semantic
 
-Model of GO atomic is more strict than atomics using in liburing. Currently, there is no public description of memory model for atomics, 
+Model of GO atomic is more strict than atomics using in liburing. Currently, there is no public description of memory model for GO atomics, 
 but with this articles ([1](https://research.swtch.com/gomm), [2](https://github.com/golang/go/issues/5045)), we know that the implementation of GO atomics is the same as default (seq_cst) atomics in C/C++. 
-But liburing use less strict semantic (explained [here](https://kernel.dk/io_uring.pdf)) - memory_order_acquire/memory_order_release in C/C++ memory model. Certainly, we can use
+But liburing use less strict semantic (explained [here](https://kernel.dk/io_uring.pdf)) - similar memory_order_acquire/memory_order_release semantic in C/C++ memory model. Certainly, we can use
 GO atomics as is (because of strict semantic), but this entails some overhead costs.
 
-This lib provides experimental realization of memory_order_acquire/memory_order_release atomics for amd64 arch, you can enable it
+This lib provides experimental realization and totally unsafe of memory_order_acquire/memory_order_release atomics for amd64 arch, you can enable it
 by adding build tag amd64_atomic. It is based on the fact that MOV instructions are enough to implement memory_order_acquire/memory_order_release on the amd64 architecture ([link](https://www.cl.cam.ac.uk/~pes20/cpp/cpp0xmappings.html)). For example:
 
 ```sh
@@ -99,13 +100,20 @@ Reactor - is event loop with io_uring inside it. Currently, there are two reacto
 
 ### net package
 
-This is the realization of net.Listener and net.Conn interfaces. It exists NetReactor inside. Please check the example of HTTP server and benchmarks to familiarize yourself with it.
+This is the realization of net.Listener and net.Conn interfaces. Using NetReactor inside. Please check the example of HTTP server and benchmarks to familiarize yourself with it.
 
 ### Examples and benchmarks
 
-#### TCP echo-server
+#### Plain TCP echo-server
+
+Single thread echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring. 
+Using for compare GO go-uring lib realization with liburing realization.
+See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-server/main.go) and [benchmarks](https://github.com/godzie44/go-uring/blob/master/example/echo-server/benchmark.md) for familiarization.
+
+#### GO-style TCP echo-server
 
 Echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring. 
+Realization similar with realization of echo-server with net/http package (benchmarks attached).
 See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-server/main.go) and [benchmarks](https://github.com/godzie44/go-uring/blob/master/example/echo-server/benchmark.md) for familiarization.
 
 #### HTTP server

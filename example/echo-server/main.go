@@ -121,8 +121,6 @@ func main() {
 		for i := 0; i < n; i++ {
 			cqe = cqes[i]
 
-			checkErr(cqe.Error())
-
 			//In the user_data field, we put the structure index in advance
 			//which contains service information about the socket.
 			ud := conns[cqe.UserData]
