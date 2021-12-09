@@ -8,9 +8,9 @@ The project contains:
 2. [reactor package](#reactor-package) - high-level API - implementation of event loop pattern with io_uring.
 3. [net](#net-package) - this is an implementation of net.Listener and net.Conn interfaces with io_uring.
 4. Examples and benchmarks:
-   1. [Plain echo server](#plain-tcp-echo-server)
-   2. [GO-style echo server (multi thread/goroutine)](#go-style-tcp-echo-server)
-   3. [HTTP server](#http-server)
+   * [Plain echo server](#plain-tcp-echo-server)
+   * [GO-style echo server (multi thread/goroutine)](#go-style-tcp-echo-server)
+   * [HTTP server](#http-server)
 
 ## URING package
 
