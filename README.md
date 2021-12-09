@@ -1,80 +1,115 @@
 ## GO-URING
 
-### About
+## About
 This project is a port of [liburing](https://github.com/axboe/liburing) for GO.
 
 The project contains:
 1. [uring package](#uring-package) - low-level io_uring API. This API is similar to libruing API.
-2. [reactor package](#reactor-package) - high-level API - realization of event loop pattern with io_uring.
-3. [net](#net-package) - this is a realization of net.Listener and net.Conn interfaces with io_uring. This can be used, for example, to run an HTTP server with io_uring inside.
+2. [reactor package](#reactor-package) - high-level API - implementation of event loop pattern with io_uring.
+3. [net](#net-package) - this is an implementation of net.Listener and net.Conn interfaces with io_uring.
 4. Examples and benchmarks:
    1. [Plain echo server](#plain-tcp-echo-server)
-   2. [GO-style echo server (multi thread/goroutine)](#tcp-echo-server)
-### uring package
+   2. [GO-style echo server (multi thread/goroutine)](#go-style-tcp-echo-server)
+   3. [HTTP server](#http-server)
+
+## URING package
 
 Package uring is a port of liburing. It provides low-level functionality for working with io_uring.
 Example of usage:
 
 - Read file:
 ```GO
-// create io_uring instance
-ring, err := uring.New(8)
-noErr(err)
-defer ring.Close()
+package main
 
-// open file and init read buffers
-file := ... 
+import (
+   "fmt"
+   "github.com/godzie44/go-uring/uring"
+   "os"
+)
 
-// add ReadV operation to SQ queue
-err = ring.QueueSQE(uring.ReadV(f, vectors, 0), 0, 0)
-noErr(err)
+func main() {
+   ring, err := uring.New(8)
+   noErr(err)
+   defer ring.Close()
 
-// submit all SQ new entries
-_, err = ring.Submit()
-noErr(err)
+   // open file and init read buffers
+   file, err := os.Open("./go.mod")
+   noErr(err)
+   stat, _ := file.Stat()
+   vectors := [][]byte{make([]byte, stat.Size())}
 
-// wait until data is reading into buffer
-cqe, err := ring.WaitCQEvents(1)
-noErr(err)
+   // add ReadV operation to SQ queue
+   err = ring.QueueSQE(uring.ReadV(file, vectors, 0), 0, 0)
+   noErr(err)
 
-// dequeue CQ
-ring.SeenCQE(cqe)
+   // submit all SQ new entries
+   _, err = ring.Submit()
+   noErr(err)
 
-fmt.Println("read %d bytes, read result: %s", cqe.Res, vectors)
+   // wait until data is reading into buffer
+   cqe, err := ring.WaitCQEvents(1)
+   noErr(err)
+   
+   noErr(cqe.Error()) //check read error
+
+   fmt.Printf("read %d bytes, read result: %s", cqe.Res, string(vectors[0]))
+
+   // dequeue CQ
+   ring.SeenCQE(cqe)
+}
 ```
 
 - Accept incoming connections:
 ```GO
-// create io_uring instance
-ring, err := uring.New(8)
-noErr(err)
-defer ring.Close()
+package main
 
-// create server socket
-socketFd := ...
+import (
+   "fmt"
+   "github.com/godzie44/go-uring/uring"
+   "syscall"
+)
 
-for {
-    // add Accept operation to SQ queue
-    err = ring.QueueSQE(uring.Accept(socketFd, 0), 0, 0)
-    noErr(err)
+func main() {
+   // create io_uring instance
+   ring, err := uring.New(8)
+   noErr(err)
+   defer ring.Close()
 
-    // submit all SQ new entries
-    _, err = ring.Submit()
-    noErr(err)
+   // create server socket
+   socketFd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+   noErr(err)
+   defer syscall.Close(socketFd)
 
-    // wait until new client connection is accepted
-    cqe, err := ring.WaitCQEvents(1)
-    noErr(err)
-    
-    // handle client socket, socket descriptor now in cqe.Res field
-    handleNewConnection(cqe.Res)
-    
-    // dequeue CQ
-    ring.SeenCQE(cqe)
+   addr := syscall.SockaddrInet4{Port: 8081}
+   noErr(syscall.Bind(socketFd, &addr))
+   noErr(syscall.Listen(socketFd, syscall.SOMAXCONN))
+
+   for {
+      // add Accept operation to SQ queue
+      err = ring.QueueSQE(uring.Accept(uintptr(socketFd), 0), 0, 0)
+      noErr(err)
+
+      // submit all SQ new entries
+      _, err = ring.Submit()
+      noErr(err)
+
+      // wait until new client connection is accepted
+      cqe, err := ring.WaitCQEvents(1)
+      noErr(err)
+
+      //check accept error
+      noErr(cqe.Error())
+
+      // handle client socket, socket descriptor now in cqe.Res field
+      fmt.Printf("socket %d connected\n", cqe.Res)
+
+      // dequeue CQ
+      ring.SeenCQE(cqe)
+   }
 }
 ```
 
-- Look more examples in tests and example folder
+- Look more examples in tests or example folder
 
 #### Release/Acquire semantic
 
@@ -83,7 +118,7 @@ but with this articles ([1](https://research.swtch.com/gomm), [2](https://github
 But liburing use less strict semantic (explained [here](https://kernel.dk/io_uring.pdf)) - similar memory_order_acquire/memory_order_release semantic in C/C++ memory model. Certainly, we can use
 GO atomics as is (because of strict semantic), but this entails some overhead costs.
 
-This lib provides experimental realization and totally unsafe of memory_order_acquire/memory_order_release atomics for amd64 arch, you can enable it
+This lib provides experimental and totally unsafe realization of memory_order_acquire/memory_order_release atomics for amd64 arch, you can enable it
 by adding build tag amd64_atomic. It is based on the fact that MOV instructions are enough to implement memory_order_acquire/memory_order_release on the amd64 architecture ([link](https://www.cl.cam.ac.uk/~pes20/cpp/cpp0xmappings.html)). For example:
 
 ```sh
@@ -92,27 +127,27 @@ by adding build tag amd64_atomic. It is based on the fact that MOV instructions 
 
 This can give about 1%-3% performance gain.
 
-### reactor package 
+## REACTOR package 
 
-Reactor - is event loop with io_uring inside it. Currently, there are two reactors in this package:
+Reactor - is event loop implemented with io_uring. Currently, there are two reactors in this package:
 1. Reactor - generic event loop, give a possibility to work with all io_uring operations.
-2. NetReactor - event loop optimized for work with network operations. Currently, support Accept, Recv, and Send.
+2. NetReactor - event loop optimized for work with network operations on sockets.
 
-### net package
+### NET package
 
-This is the realization of net.Listener and net.Conn interfaces. Using NetReactor inside. Please check the example of HTTP server and benchmarks to familiarize yourself with it.
+This is the implementation of net.Listener and net.Conn interfaces. Uses NetReactor inside. Please check the example of [HTTP server](#http-server) and [multi thread TCP echo-server]((#go-style-tcp-echo-server)) to familiarize yourself with it.
 
-### Examples and benchmarks
+## Examples and benchmarks
 
 #### Plain TCP echo-server
 
-Single thread echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring. 
-Using for compare GO go-uring lib realization with liburing realization.
+Single thread echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring.
+Useful for compare GO go-uring lib realization with liburing realization.
 See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-server/main.go) and [benchmarks](https://github.com/godzie44/go-uring/blob/master/example/echo-server/benchmark.md) for familiarization.
 
 #### GO-style TCP echo-server
 
-Echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring. 
+Echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring and reactor packages. 
 Realization similar with realization of echo-server with net/http package (benchmarks attached).
 See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-server-multi-thread/main.go) and [benchmarks](https://github.com/godzie44/go-uring/blob/master/example/echo-server-multi-thread/benchmark.md) for familiarization.
 
