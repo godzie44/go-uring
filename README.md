@@ -149,6 +149,8 @@ See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-
 
 Echo-server (listens on a specific TCP port and as soon as any data arrives at this port, it immediately forwards it back to the sender) implemented with go-uring and reactor packages. 
 Realization similar with realization of echo-server with net/http package (benchmarks attached).
-See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-server-multi-thread/main.go) and [benchmarks](https://github.com/godzie44/go-uring/blob/master/example/echo-server-multi-thread/benchmark.md) for familiarization.
+See [source code](https://github.com/godzie44/go-uring/blob/master/example/echo-server-multi-thread/main.go) and [benchmarks](https://github.com/godzie44/go-uring/blob/master/example/echo-server-multi-thread/Benchmark.md) for familiarization.
 
 #### HTTP server
+
+Example of HTTP-server implemented with io_uring. [Sources](https://github.com/godzie44/go-uring/blob/master/example/http-server/main.go).
