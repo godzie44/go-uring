@@ -135,7 +135,7 @@ Reactor - is event loop implemented with io_uring. Currently, there are two reac
 
 ## NET package
 
-This is the implementation of net.Listener and net.Conn interfaces. Uses NetReactor inside. Please check the example of [HTTP server](#http-server) and [multi thread TCP echo-server]((#go-style-tcp-echo-server)) to familiarize yourself with it.
+This is the implementation of net.Listener and net.Conn interfaces. Uses NetReactor inside. Please check the example of [HTTP server](#http-server) and [multi thread TCP echo-server](#go-style-tcp-echo-server) to familiarize yourself with it.
 
 ## Examples and benchmarks
 
