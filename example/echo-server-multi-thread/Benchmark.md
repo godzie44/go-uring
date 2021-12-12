@@ -39,9 +39,9 @@ Check [main.go](https://github.com/godzie44/go-uring/blob/master/example/echo-se
 As you can see in benchmarks there is a bad performance for go-uring echo-servers on 100-connections test cases. This is not
 a problem of io_uring, there is a problem of current net-reactor implementation. For 100-conn's test case echo-server's with go-uring does not load the processor completely,
 maybe I fix this in the future. Anyway, goal of this
-benchmark is not a win GO netpoller, it's a show that io_uring can be an alternative of netpoller, and in some cases, it also can win netpoller.
+benchmark is not a win GO netpoller, it's a show that io_uring can be an alternative of netpoller, and in some cases, it also can over-perform netpoller.
 
-By the way, there is a little fix for bad performance on 100-conn's - change startup parameters for creating less io_uring(-ring-count flag) instances at echo-server.
+By the way, there is a simple fix for bad performance on 100-conn's - change startup parameters for creating less io_uring(-ring-count flag) instances at echo-server.
 
 ### Benchmark script
 
