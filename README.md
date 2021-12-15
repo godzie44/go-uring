@@ -1,15 +1,15 @@
 ## GO-URING
 
-## About
-This project is a port of [liburing](https://github.com/axboe/liburing) for GO.
+Linux io_uring for GO.
 
-The project contains:
-1. [uring package](#uring-package) - low-level io_uring API. This API is similar to libruing API.
-2. [reactor package](#reactor-package) - high-level API - implementation of event loop pattern with io_uring.
-3. [net](#net-package) - this is an implementation of net.Listener and net.Conn interfaces with io_uring.
+## About
+This project contains:
+1. [uring](#uring-package) package - low-level io_uring API. This API is similar to [liburing](https://github.com/axboe/liburing) API. In other words - this is a port of [liburing](https://github.com/axboe/liburing).
+2. [reactor](#reactor-package) package - high-level API - implementation of event loop pattern with io_uring.
+3. [net](#net-package) package - this is an implementation of net.Listener and net.Conn interfaces with io_uring.
 4. Examples and benchmarks:
    * [Plain echo server](#plain-tcp-echo-server)
-   * [GO-style echo server (multi thread/goroutine)](#go-style-tcp-echo-server)
+   * [GO-style echo server](#go-style-tcp-echo-server) (multi thread/goroutine)
    * [HTTP server](#http-server)
 
 ## URING package
@@ -114,7 +114,7 @@ func main() {
 #### Release/Acquire semantic
 
 Model of GO atomic is more strict than atomics using in liburing. Currently, there is no public description of memory model for GO atomics, 
-but with this articles ([1](https://research.swtch.com/gomm), [2](https://github.com/golang/go/issues/5045)), we know that the implementation of GO atomics is the same as default (seq_cst) atomics in C/C++. 
+but with these articles ([1](https://research.swtch.com/gomm), [2](https://github.com/golang/go/issues/5045)), we know that the implementation of GO atomics is the same as default (seq_cst) atomics in C/C++. 
 But liburing use less strict semantic (explained [here](https://kernel.dk/io_uring.pdf)) - similar memory_order_acquire/memory_order_release semantic in C/C++ memory model. Certainly, we can use
 GO atomics as is (because of strict semantic), but this entails some overhead costs.
 
