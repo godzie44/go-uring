@@ -36,7 +36,7 @@ func send(t *testing.T) {
 	require.NoError(t, err)
 	defer ring.Close()
 
-	conn, err := net.Dial("udp", "127.0.0.1:8080")
+	conn, err := net.Dial("udp", "127.0.0.1:8087")
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -54,7 +54,7 @@ func recv(t *testing.T, cond *sync.Cond) {
 	require.NoError(t, err)
 	defer ring.Close()
 
-	pc, err := net.ListenPacket("udp", ":8080")
+	pc, err := net.ListenPacket("udp", ":8087")
 	require.NoError(t, err)
 	defer pc.Close()
 

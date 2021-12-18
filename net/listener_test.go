@@ -13,7 +13,7 @@ import (
 )
 
 func TestListenerAccept(t *testing.T) {
-	r, err := uring.New(uring.MaxEntries >> 1)
+	r, err := uring.New(uring.MaxEntries >> 2)
 	require.NoError(t, err)
 	defer r.Close()
 
