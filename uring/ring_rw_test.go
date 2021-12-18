@@ -132,3 +132,59 @@ func TestSingleWriteV(t *testing.T) {
 
 	require.Equal(t, "writev test line 1 \nwritev test line 2 \nwritev test line 3 \n", string(recorded))
 }
+
+func TestRead(t *testing.T) {
+	r, err := New(8)
+	require.NoError(t, err)
+	defer r.Close()
+
+	f, err := os.Open(readFileName)
+	require.NoError(t, err)
+	defer f.Close()
+
+	info, err := f.Stat()
+	require.NoError(t, err)
+
+	buff := make([]byte, info.Size())
+
+	require.NoError(t, r.QueueSQE(Read(f.Fd(), buff, 0), 0, 0))
+
+	_, err = r.Submit()
+	require.NoError(t, err)
+
+	_, err = r.WaitCQEvents(1)
+	require.NoError(t, err)
+
+	expected, err := ioutil.ReadFile(readFileName)
+	require.NoError(t, err)
+
+	assert.Equal(t, string(expected), string(buff))
+}
+
+func TestWrite(t *testing.T) {
+	ring, err := New(8)
+	require.NoError(t, err)
+	defer ring.Close()
+
+	const testFileName = "/tmp/single_write.txt"
+
+	f, err := os.Create(testFileName)
+	require.NoError(t, err)
+	defer os.Remove(testFileName)
+	defer f.Close()
+
+	writeData := []byte("write test line 1 \nwrite test line 2 \nwrite test line 3 \n")
+	require.NoError(t, ring.QueueSQE(Write(f.Fd(), writeData, 0), 0, 0))
+
+	_, err = ring.Submit()
+	require.NoError(t, err)
+
+	cqe, err := ring.WaitCQEvents(1)
+	require.NoError(t, err)
+	require.Equal(t, len(writeData), int(cqe.Res))
+
+	recorded, err := ioutil.ReadFile(testFileName)
+	require.NoError(t, err)
+
+	require.Equal(t, "write test line 1 \nwrite test line 2 \nwrite test line 3 \n", string(recorded))
+}

@@ -38,8 +38,8 @@ const (
 	CloseCode
 	opFilesUpdate
 	opStatX
-	opRead
-	opWrite
+	ReadCode
+	WriteCode
 	opFAdvise
 	opMAdvise
 	SendCode
@@ -350,4 +350,44 @@ func (op *CloseOp) PrepSQE(sqe *SQEntry) {
 
 func (op *CloseOp) Code() OpCode {
 	return CloseCode
+}
+
+//ReadOp read operation, equivalent of a pread(2) system call.
+type ReadOp struct {
+	fd   uintptr
+	buff []byte
+	off  uint64
+}
+
+//Read - create read operation, equivalent of a pread(2) system call.
+func Read(fd uintptr, buff []byte, offset uint64) *ReadOp {
+	return &ReadOp{fd: fd, buff: buff, off: offset}
+}
+
+func (op *ReadOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(ReadCode, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), op.off)
+}
+
+func (op *ReadOp) Code() OpCode {
+	return ReadCode
+}
+
+//WriteOp write operation, equivalent of a pwrite(2) system call.
+type WriteOp struct {
+	fd   uintptr
+	buff []byte
+	off  uint64
+}
+
+//Write - create write operation, equivalent of a pwrite(2) system call.
+func Write(fd uintptr, buff []byte, offset uint64) *WriteOp {
+	return &WriteOp{fd: fd, buff: buff, off: offset}
+}
+
+func (op *WriteOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(WriteCode, int32(op.fd), uintptr(unsafe.Pointer(&op.buff[0])), uint32(len(op.buff)), op.off)
+}
+
+func (op *WriteOp) Code() OpCode {
+	return WriteCode
 }

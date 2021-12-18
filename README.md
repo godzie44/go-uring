@@ -36,10 +36,10 @@ func main() {
    file, err := os.Open("./go.mod")
    noErr(err)
    stat, _ := file.Stat()
-   vectors := [][]byte{make([]byte, stat.Size())}
+   buff := make([]byte, stat.Size())
 
-   // add ReadV operation to SQ queue
-   err = ring.QueueSQE(uring.ReadV(file, vectors, 0), 0, 0)
+   // add Read operation to SQ queue
+   err = ring.QueueSQE(uring.Read(file.Fd(), buff, 0), 0, 0)
    noErr(err)
 
    // submit all SQ new entries
@@ -49,10 +49,10 @@ func main() {
    // wait until data is reading into buffer
    cqe, err := ring.WaitCQEvents(1)
    noErr(err)
-   
+
    noErr(cqe.Error()) //check read error
 
-   fmt.Printf("read %d bytes, read result: %s", cqe.Res, string(vectors[0]))
+   fmt.Printf("read %d bytes, read result: \n%s", cqe.Res, string(buff))
 
    // dequeue CQ
    ring.SeenCQE(cqe)
