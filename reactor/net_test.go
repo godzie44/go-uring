@@ -53,7 +53,7 @@ func (ts *NetworkReactorTestSuite) TearDownTest() {
 }
 
 func (ts *NetworkReactorTestSuite) TestExecuteWithDeadline() {
-	l, fd, err := makeTCPListener("0.0.0.0:8080")
+	l, fd, err := makeTCPListener("0.0.0.0:8081")
 	ts.Require().NoError(err)
 	defer l.Close()
 
@@ -72,7 +72,7 @@ func (ts *NetworkReactorTestSuite) TestExecuteWithDeadline() {
 }
 
 func (ts *NetworkReactorTestSuite) TestCancelOperation() {
-	l, fd, err := makeTCPListener("0.0.0.0:8080")
+	l, fd, err := makeTCPListener("0.0.0.0:8082")
 	ts.Require().NoError(err)
 	defer l.Close()
 

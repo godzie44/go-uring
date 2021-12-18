@@ -16,8 +16,8 @@ import (
 	"time"
 )
 
-func dial(t *testing.T, connChan chan<- net.Conn) {
-	c, err := net.Dial("tcp", "0.0.0.0:8080")
+func dial(t *testing.T, addr string, connChan chan<- net.Conn) {
+	c, err := net.Dial("tcp", addr)
 	require.NoError(t, err)
 
 	connChan <- c
@@ -61,7 +61,7 @@ func TestAccept(t *testing.T) {
 	require.NoError(t, err)
 	defer ring.Close()
 
-	testAccept(t, ring)
+	testAccept(t, ring, "0.0.0.0:8081")
 }
 
 func TestAcceptWithSQPoll(t *testing.T) {
@@ -72,16 +72,16 @@ func TestAcceptWithSQPoll(t *testing.T) {
 	require.NoError(t, err)
 	defer ring.Close()
 
-	testAccept(t, ring)
+	testAccept(t, ring, "0.0.0.0:8082")
 }
 
-func testAccept(t *testing.T, ring *Ring) {
-	tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
+func testAccept(t *testing.T, ring *Ring, addr string) {
+	tcpListener, listenerFd, err := makeTCPListener(addr)
 	require.NoError(t, err)
 	defer tcpListener.Close()
 
 	clientConnChan := make(chan net.Conn)
-	go dial(t, clientConnChan)
+	go dial(t, addr, clientConnChan)
 
 	connFd, err := acceptConnection(t, ring, listenerFd)
 	require.NoError(t, err)
@@ -161,11 +161,13 @@ func TestAcceptCancel(t *testing.T) {
 		{time.Microsecond * 10000},
 	}
 
+	const addr = "0.0.0.0:8083"
+
 	for _, tc := range testCases {
 		ring, err := New(32)
 		require.NoError(t, err)
 
-		tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
+		tcpListener, listenerFd, err := makeTCPListener(addr)
 		require.NoError(t, err)
 
 		require.NoError(t, ring.QueueSQE(Accept(listenerFd, 0), 0, 1))
@@ -274,14 +276,14 @@ func TestAcceptLink(t *testing.T) {
 		wg.Add(1)
 		go func(tc linkTestCase) {
 			defer wg.Done()
-			recvG(t, 8080, tc, syncChan)
+			recvG(t, 8084, tc, syncChan)
 		}(tc)
 
 		if tc.doConnect {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				sendG(t, 8080, syncChan)
+				sendG(t, 8084, syncChan)
 			}()
 		}
 
@@ -341,12 +343,13 @@ func TestAcceptAddr(t *testing.T) {
 	require.NoError(t, err)
 	defer ring.Close()
 
-	tcpListener, listenerFd, err := makeTCPListener("0.0.0.0:8080")
+	const addr = "0.0.0.0:8085"
+	tcpListener, listenerFd, err := makeTCPListener(addr)
 	require.NoError(t, err)
 	defer tcpListener.Close()
 
 	clientConnChan := make(chan net.Conn)
-	go dial(t, clientConnChan)
+	go dial(t, addr, clientConnChan)
 
 	op := Accept(listenerFd, 0)
 

@@ -74,7 +74,7 @@ func (ts *ReactorTestSuite) TestReactorExecuteReadV() {
 }
 
 func (ts *ReactorTestSuite) TestExecuteWithDeadline() {
-	l, fd, err := makeTCPListener("0.0.0.0:8080")
+	l, fd, err := makeTCPListener("0.0.0.0:8083")
 	ts.Require().NoError(err)
 	defer l.Close()
 
@@ -94,7 +94,7 @@ func (ts *ReactorTestSuite) TestExecuteWithDeadline() {
 }
 
 func (ts *ReactorTestSuite) TestCancelOperation() {
-	l, fd, err := makeTCPListener("0.0.0.0:8080")
+	l, fd, err := makeTCPListener("0.0.0.0:8084")
 	ts.Require().NoError(err)
 	defer l.Close()
 
