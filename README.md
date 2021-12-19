@@ -17,7 +17,7 @@ This project contains:
 Package uring is a port of liburing. It provides low-level functionality for working with io_uring.
 Example of usage:
 
-- Read file:
+- read file:
 ```GO
 package main
 
@@ -59,7 +59,7 @@ func main() {
 }
 ```
 
-- Accept incoming connections:
+- accept incoming connections:
 ```GO
 package main
 
@@ -109,7 +109,7 @@ func main() {
 }
 ```
 
-- Look more examples in tests or example folder
+- Look more examples in uring package tests
 
 #### Release/Acquire semantic
 
@@ -132,6 +132,96 @@ This can give about 1%-3% performance gain.
 Reactor - is event loop implemented with io_uring. Currently, there are two reactors in this package:
 1. Reactor - generic event loop, give a possibility to work with all io_uring operations.
 2. NetReactor - event loop optimized for work with network operations on sockets.
+
+Example of usage:
+- read file:
+```GO
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/godzie44/go-uring/reactor"
+	"github.com/godzie44/go-uring/uring"
+	"os"
+	"os/signal"
+)
+
+func main() {
+	ring, err := uring.New(8)
+	noErr(err)
+
+	// create and start reactor
+	rea, err := reactor.New([]*uring.Ring{ring})
+	noErr(err)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	go func() {
+		rea.Run(ctx)
+	}()
+
+	// open file and init read buffers
+	file, err := os.Open("./go.mod")
+	noErr(err)
+	stat, _ := file.Stat()
+	buff := make([]byte, stat.Size())
+
+	// queue read operation, result CQE will be handled by callback func
+	op := uring.Read(file.Fd(), buff, 0)
+	rea.Queue(op, func(event uring.CQEvent) {
+		noErr(event.Error()) //check read error
+		fmt.Printf("read %d bytes, read result: \n%s", event.Res, string(buff))
+		cancel()
+	})
+
+	<-ctx.Done()
+}
+```
+
+- accept incoming connections:
+```GO
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/godzie44/go-uring/reactor"
+	"github.com/godzie44/go-uring/uring"
+	"syscall"
+)
+
+func main() {
+	ring, err := uring.New(8)
+	noErr(err)
+
+	// create and start net-reactor
+	rea, err := reactor.NewNet([]*uring.Ring{ring})
+	noErr(err)
+	go func() {
+		rea.Run(context.Background())
+	}()
+
+	// create server socket
+	socketFd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	noErr(err)
+	defer syscall.Close(socketFd)
+	addr := syscall.SockaddrInet4{Port: 8081}
+	noErr(syscall.Bind(socketFd, &addr))
+	noErr(syscall.Listen(socketFd, syscall.SOMAXCONN))
+
+	acceptChan := make(chan int32)
+	for {
+		// queue accept operation, result CQE will be handled by callback func
+		op := uring.Accept(uintptr(socketFd), 0)
+		rea.Queue(op, func(event uring.CQEvent) {
+			noErr(event.Error()) //check accept error
+			acceptChan <- event.Res
+		})
+
+		fmt.Printf("socket %d connected\n", <-acceptChan)
+	}
+}
+```
+- Look more examples in reactor package tests
 
 ## NET package
 
