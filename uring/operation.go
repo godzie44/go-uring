@@ -32,7 +32,7 @@ const (
 	AcceptCode
 	AsyncCancelCode
 	LinkTimeoutCode
-	opConnect
+	ConnectCode
 	opFAllocate
 	opOpenAt
 	CloseCode
@@ -195,7 +195,7 @@ func (op *AcceptOp) AddrLen() uint32 {
 	return op.len
 }
 
-//CancelOp Attempt  to cancel an already issued request.
+//CancelOp attempt to cancel an already issued request.
 type CancelOp struct {
 	flags          uint32
 	targetUserData uint64
@@ -390,4 +390,34 @@ func (op *WriteOp) PrepSQE(sqe *SQEntry) {
 
 func (op *WriteOp) Code() OpCode {
 	return WriteCode
+}
+
+//ConnectOp connect operation, equivalent of a connect(2) system call.
+type ConnectOp struct {
+	fd   uintptr
+	addr *sockaddrnet.RawSockaddrAny
+	len  sockaddr.Socklen
+}
+
+//Connect operation, equivalent of a connect(2) system call.
+func Connect(fd uintptr, addr *net.TCPAddr) *ConnectOp {
+	sa := sockaddrnet.NetAddrToSockaddr(addr)
+	rsa, l, err := sockaddr.SockaddrToAny(sa)
+	if err != nil {
+		panic(err)
+	}
+
+	return &ConnectOp{
+		fd:   fd,
+		addr: rsa,
+		len:  l,
+	}
+}
+
+func (op *ConnectOp) PrepSQE(sqe *SQEntry) {
+	sqe.fill(ConnectCode, int32(op.fd), uintptr(unsafe.Pointer(op.addr)), 0, uint64(op.len))
+}
+
+func (op *ConnectOp) Code() OpCode {
+	return ConnectCode
 }
