@@ -43,7 +43,7 @@ func startServer(t *testing.T, addr string) func() {
 	require.NoError(t, err)
 
 	go func() {
-		http.Serve(l, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_ = http.Serve(l, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		}))
 	}()
 
