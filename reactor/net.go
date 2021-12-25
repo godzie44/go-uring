@@ -85,8 +85,8 @@ func (r *NetworkReactor) Run(ctx context.Context) {
 	<-ctx.Done()
 
 	for _, loop := range r.loops {
-		loop.stopReader()
-		loop.stopWriter()
+		loop.stopConsumer()
+		loop.stopPublisher()
 	}
 }
 
@@ -149,8 +149,8 @@ type ringNetEventLoop struct {
 	reqBuss      chan subSqeRequest
 	submitSignal chan struct{}
 
-	stopReaderChan chan struct{}
-	stopWriterChan chan struct{}
+	stopConsumerCh  chan struct{}
+	stopPublisherCh chan struct{}
 
 	submitAllowed uint32
 
@@ -159,13 +159,13 @@ type ringNetEventLoop struct {
 
 func newRingNetEventLoop(ring *uring.Ring, logger Logger, registry *cbRegistry) *ringNetEventLoop {
 	return &ringNetEventLoop{
-		ring:           ring,
-		reqBuss:        make(chan subSqeRequest, 1<<8),
-		submitSignal:   make(chan struct{}),
-		stopReaderChan: make(chan struct{}),
-		stopWriterChan: make(chan struct{}),
-		registry:       registry,
-		log:            logger,
+		ring:            ring,
+		reqBuss:         make(chan subSqeRequest, 1<<8),
+		submitSignal:    make(chan struct{}),
+		stopConsumerCh:  make(chan struct{}),
+		stopPublisherCh: make(chan struct{}),
+		registry:        registry,
+		log:             logger,
 	}
 }
 
@@ -211,8 +211,8 @@ func (loop *ringNetEventLoop) runConsumer(tickDuration time.Duration) {
 
 	CheckCtxAndContinue:
 		select {
-		case <-loop.stopReaderChan:
-			close(loop.stopReaderChan)
+		case <-loop.stopConsumerCh:
+			close(loop.stopConsumerCh)
 			return
 		default:
 			continue
@@ -220,14 +220,14 @@ func (loop *ringNetEventLoop) runConsumer(tickDuration time.Duration) {
 	}
 }
 
-func (loop *ringNetEventLoop) stopReader() {
-	loop.stopReaderChan <- struct{}{}
-	<-loop.stopReaderChan
+func (loop *ringNetEventLoop) stopConsumer() {
+	loop.stopConsumerCh <- struct{}{}
+	<-loop.stopConsumerCh
 }
 
-func (loop *ringNetEventLoop) stopWriter() {
-	loop.stopWriterChan <- struct{}{}
-	<-loop.stopWriterChan
+func (loop *ringNetEventLoop) stopPublisher() {
+	loop.stopPublisherCh <- struct{}{}
+	<-loop.stopPublisherCh
 }
 
 func (loop *ringNetEventLoop) cancel(id RequestID) {
@@ -278,8 +278,8 @@ func (loop *ringNetEventLoop) runPublisher() {
 				}
 			}
 
-		case <-loop.stopWriterChan:
-			close(loop.stopWriterChan)
+		case <-loop.stopPublisherCh:
+			close(loop.stopPublisherCh)
 			return
 		}
 	}

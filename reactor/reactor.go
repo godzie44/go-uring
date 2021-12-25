@@ -85,8 +85,8 @@ func (r *Reactor) Run(ctx context.Context) {
 	<-ctx.Done()
 
 	for _, loop := range r.loops {
-		loop.stopReader()
-		loop.stopWriter()
+		loop.stopConsumer()
+		loop.stopPublisher()
 	}
 }
 
@@ -139,20 +139,20 @@ type ringEventLoop struct {
 
 	logger Logger
 
-	stopReaderChan chan struct{}
-	stopWriterChan chan struct{}
+	stopConsumerCh  chan struct{}
+	stopPublisherCh chan struct{}
 
 	needSubmit uint32
 }
 
 func newRingEventLoop(ring *uring.Ring, logger Logger) *ringEventLoop {
 	return &ringEventLoop{
-		ring:           ring,
-		submitSignal:   make(chan struct{}),
-		stopReaderChan: make(chan struct{}),
-		stopWriterChan: make(chan struct{}),
-		callbacks:      map[uint64]Callback{},
-		logger:         logger,
+		ring:            ring,
+		submitSignal:    make(chan struct{}),
+		stopConsumerCh:  make(chan struct{}),
+		stopPublisherCh: make(chan struct{}),
+		callbacks:       map[uint64]Callback{},
+		logger:          logger,
 	}
 }
 
@@ -199,8 +199,8 @@ func (loop *ringEventLoop) runConsumer(tickDuration time.Duration) {
 
 	CheckCtxAndContinue:
 		select {
-		case <-loop.stopReaderChan:
-			close(loop.stopReaderChan)
+		case <-loop.stopConsumerCh:
+			close(loop.stopConsumerCh)
 			return
 		default:
 			continue
@@ -208,14 +208,14 @@ func (loop *ringEventLoop) runConsumer(tickDuration time.Duration) {
 	}
 }
 
-func (loop *ringEventLoop) stopReader() {
-	loop.stopReaderChan <- struct{}{}
-	<-loop.stopReaderChan
+func (loop *ringEventLoop) stopConsumer() {
+	loop.stopConsumerCh <- struct{}{}
+	<-loop.stopConsumerCh
 }
 
-func (loop *ringEventLoop) stopWriter() {
-	loop.stopWriterChan <- struct{}{}
-	<-loop.stopWriterChan
+func (loop *ringEventLoop) stopPublisher() {
+	loop.stopPublisherCh <- struct{}{}
+	<-loop.stopPublisherCh
 }
 
 func (loop *ringEventLoop) cancel(nonce uint64) error {
@@ -269,8 +269,8 @@ func (loop *ringEventLoop) runPublisher() {
 					loop.logger.Log("io_uring submit", err)
 				}
 			}
-		case <-loop.stopWriterChan:
-			close(loop.stopWriterChan)
+		case <-loop.stopPublisherCh:
+			close(loop.stopPublisherCh)
 			return
 		}
 	}
