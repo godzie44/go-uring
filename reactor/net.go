@@ -113,9 +113,12 @@ func (r *NetworkReactor) queue(op NetOperation, cb Callback, timeout time.Durati
 	return ud
 }
 
+const minFDPerLoop = 75
+
 func (r *NetworkReactor) loopForFd(fd int) *ringNetEventLoop {
 	n := len(r.loops)
-	return r.loops[fd%n]
+	h := fd / minFDPerLoop
+	return r.loops[h%n]
 }
 
 //Queue io_uring operation.
