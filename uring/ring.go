@@ -95,6 +95,14 @@ func WithSQPoll(threadIdleMs uint32) SetupOption {
 	}
 }
 
+//WithSQThreadCPU bound poll thread to the cpu.
+func WithSQThreadCPU(cpu uint32) SetupOption {
+	return func(params *ringParams) {
+		params.flags = params.flags | setupSQAff
+		params.sqThreadCpu = cpu
+	}
+}
+
 //New create new io_uring instance with. Entries - size of SQ and CQ buffers.
 func New(entries uint32, opts ...SetupOption) (*Ring, error) {
 	if entries > MaxEntries {
