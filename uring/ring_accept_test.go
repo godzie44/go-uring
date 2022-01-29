@@ -65,7 +65,7 @@ func TestAccept(t *testing.T) {
 }
 
 func TestAcceptWithSQPoll(t *testing.T) {
-	ring, err := New(64, WithSQPoll(100))
+	ring, err := New(64, WithSQPoll(time.Millisecond*100))
 	if errors.Is(err, syscall.EPERM) {
 		t.Skipf("SQ_POLL flag require root previligies or CAP_SYS_NICE capability")
 	}

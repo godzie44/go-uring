@@ -88,10 +88,10 @@ func WithAttachedWQ(fd int) SetupOption {
 //WithSQPoll add IORING_SETUP_SQPOLL flag.
 //Note, that process must started with root privileges
 //or the user should have the CAP_SYS_NICE capability (for kernel version >= 5.11).
-func WithSQPoll(threadIdleMs uint32) SetupOption {
+func WithSQPoll(threadIdle time.Duration) SetupOption {
 	return func(params *ringParams) {
 		params.flags = params.flags | setupSQPoll
-		params.sqThreadIdle = threadIdleMs
+		params.sqThreadIdle = uint32(threadIdle.Milliseconds())
 	}
 }
 

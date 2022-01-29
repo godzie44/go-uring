@@ -11,6 +11,7 @@ import (
 	"net"
 	"runtime"
 	"strconv"
+	"time"
 )
 
 type logger struct {
@@ -61,7 +62,7 @@ func main() {
 		checkErr(err)
 
 	case modeURingSQPoll:
-		opts = append(opts, uring.WithSQPoll(100))
+		opts = append(opts, uring.WithSQPoll(time.Millisecond*100))
 		fallthrough
 
 	case modeURing:
