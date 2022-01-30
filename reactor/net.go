@@ -61,7 +61,7 @@ func NewNet(rings []*uring.Ring, opts ...Option) (*NetworkReactor, error) {
 		},
 	}
 
-	r.registry = newCbRegistry(len(rings))
+	r.registry = newCbRegistry(len(rings), fdPerGranule)
 
 	for _, opt := range opts {
 		opt(r.config)
@@ -113,11 +113,11 @@ func (r *NetworkReactor) queue(op NetOperation, cb Callback, timeout time.Durati
 	return ud
 }
 
-const minFDPerLoop = 75
+const fdPerGranule = 75
 
 func (r *NetworkReactor) loopForFd(fd int) *ringNetEventLoop {
 	n := len(r.loops)
-	h := fd / minFDPerLoop
+	h := fd / fdPerGranule
 	return r.loops[h%n]
 }
 
