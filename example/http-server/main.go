@@ -49,7 +49,7 @@ func main() {
 	})
 
 	mux.HandleFunc("/get-file", func(w http.ResponseWriter, request *http.Request) {
-		file, err := ioutil.ReadFile("./example/http-server/cmd/gopher.png")
+		file, err := ioutil.ReadFile("./example/http-server/gopher.png")
 		checkErr(err)
 
 		w.WriteHeader(http.StatusOK)
