@@ -2,6 +2,11 @@
 
 Linux io_uring for GO.
 
+A series of articles about this library and io_uring (RU):
+* [1](https://habr.com/ru/company/itsoft/blog/589389/)
+* [2](https://habr.com/ru/company/itsoft/blog/597745/)
+* [3](https://habr.com/ru/company/itsoft/blog/649161/)
+
 ## About
 This project contains:
 1. [uring](#uring-package) package - low-level io_uring API. This API is similar to [liburing](https://github.com/axboe/liburing) API. In other words - this is a port of [liburing](https://github.com/axboe/liburing).
