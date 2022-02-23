@@ -5,12 +5,13 @@ package reactor
 import (
 	"context"
 	"errors"
-	"github.com/godzie44/go-uring/uring"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/godzie44/go-uring/uring"
 )
 
 type Callback func(event uring.CQEvent)
@@ -41,7 +42,6 @@ type Reactor struct {
 	loops []*ringEventLoop
 
 	currentNonce uint64
-	nonceLock    sync.Mutex
 
 	config *configuration
 }
@@ -277,13 +277,11 @@ func (loop *ringEventLoop) runPublisher() {
 }
 
 func (r *Reactor) nextNonce() uint64 {
-	r.nonceLock.Lock()
-	defer r.nonceLock.Unlock()
+	local := atomic.AddUint64(&r.currentNonce, 1)
 
-	r.currentNonce++
-	if r.currentNonce >= cancelNonce {
-		r.currentNonce = 0
+	for local >= cancelNonce {
+		local = atomic.AddUint64(&r.currentNonce, 1)
 	}
 
-	return r.currentNonce
+	return local
 }
