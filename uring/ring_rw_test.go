@@ -5,7 +5,6 @@ package uring
 import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
 	"math"
 	"os"
 	"testing"
@@ -64,7 +63,7 @@ func TestSingleReadV(t *testing.T) {
 	_, err = r.WaitCQEvents(1)
 	require.NoError(t, err)
 
-	expected, err := ioutil.ReadFile(readFileName)
+	expected, err := os.ReadFile(readFileName)
 	require.NoError(t, err)
 
 	assert.Equal(t, string(expected), vectorsToString(vectors))
@@ -93,7 +92,7 @@ func TestMultipleReadV(t *testing.T) {
 	_, err = r.WaitCQEvents(2)
 	require.NoError(t, err)
 
-	expected, err := ioutil.ReadFile(readFileName)
+	expected, err := os.ReadFile(readFileName)
 	require.NoError(t, err)
 
 	assert.Equal(t, string(expected), vectorsToString(vectors1))
@@ -127,7 +126,7 @@ func TestSingleWriteV(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(writeData[0])+len(writeData[1])+len(writeData[2]), int(cqe.Res))
 
-	recorded, err := ioutil.ReadFile(testFileName)
+	recorded, err := os.ReadFile(testFileName)
 	require.NoError(t, err)
 
 	require.Equal(t, "writev test line 1 \nwritev test line 2 \nwritev test line 3 \n", string(recorded))
@@ -155,7 +154,7 @@ func TestRead(t *testing.T) {
 	_, err = r.WaitCQEvents(1)
 	require.NoError(t, err)
 
-	expected, err := ioutil.ReadFile(readFileName)
+	expected, err := os.ReadFile(readFileName)
 	require.NoError(t, err)
 
 	assert.Equal(t, string(expected), string(buff))
@@ -183,7 +182,7 @@ func TestWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(writeData), int(cqe.Res))
 
-	recorded, err := ioutil.ReadFile(testFileName)
+	recorded, err := os.ReadFile(testFileName)
 	require.NoError(t, err)
 
 	require.Equal(t, "write test line 1 \nwrite test line 2 \nwrite test line 3 \n", string(recorded))

@@ -6,7 +6,6 @@ import (
 	"context"
 	"github.com/godzie44/go-uring/uring"
 	"github.com/stretchr/testify/suite"
-	"io/ioutil"
 	"os"
 	"sync"
 	"syscall"
@@ -55,7 +54,7 @@ func (ts *ReactorTestSuite) TestReactorExecuteReadV() {
 	ts.Require().NoError(err)
 	defer f.Close()
 
-	expected, err := ioutil.ReadFile("../go.mod")
+	expected, err := os.ReadFile("../go.mod")
 	ts.Require().NoError(err)
 
 	buff := make([]byte, len(expected))

@@ -11,11 +11,11 @@ import (
 	reactor "github.com/godzie44/go-uring/reactor"
 	"github.com/godzie44/go-uring/uring"
 	"io"
-	"io/ioutil"
 	"log"
 	gonet "net"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"runtime"
 )
 
@@ -49,7 +49,7 @@ func main() {
 	})
 
 	mux.HandleFunc("/get-file", func(w http.ResponseWriter, request *http.Request) {
-		file, err := ioutil.ReadFile("./example/http-server/gopher.png")
+		file, err := os.ReadFile("./example/http-server/gopher.png")
 		checkErr(err)
 
 		w.WriteHeader(http.StatusOK)
