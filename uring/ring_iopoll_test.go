@@ -5,6 +5,7 @@ package uring
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"math/rand"
@@ -21,7 +22,7 @@ const bufferCnt = fileSize / bufferSize
 func TestIOPoll(t *testing.T) {
 	var fName string
 	{
-		testFile, err := os.CreateTemp("", "basic-rw")
+		testFile, err := os.Create(fmt.Sprintf(".basic-rw-%d-%d", rand.Uint32(), syscall.Getpid()))
 		require.NoError(t, err)
 		_, err = testFile.Write(bytes.Repeat([]byte("io"), fileSize/2))
 		require.NoError(t, err)
