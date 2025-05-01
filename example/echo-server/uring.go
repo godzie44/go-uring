@@ -7,10 +7,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/godzie44/go-uring/uring"
 	"log"
 	"strconv"
 	"syscall"
+
+	"github.com/godzie44/go-uring/uring"
 )
 
 const MaxConns = 4096

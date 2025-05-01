@@ -17,8 +17,8 @@ do
       sudo cset shield --shield --pid $SRV_PID
       sleep 1s
 
-      OUT=cargo run -q --manifest-path $2 --release -- --address "127.0.0.1:8080" --number $conn_cnt --duration 30 --length $msg_len
-      RPS=$(echo "${OUT}" | sed -n '/^Speed/ p' | sed -r 's|^([^.]+).*$|\1|; s|^[^0-9]*([0-9]+).*$|\1 |')
+      OUT=tcp-echo-benchmark --address "127.0.0.1:8080" --number $conn_cnt --duration 30 --length $msg_len
+      RPS=$(echo "${OUT}" | sed -n 's/Throughput: \([0-9]*\) request\/sec.*/\1/p')
       RPS_SUM=$((RPS_SUM + RPS))
 
       echo "attempt: $attempt, rps: $RPS "
