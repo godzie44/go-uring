@@ -15,18 +15,18 @@ __Linux 5.7 or higher__
 * Echo server is assigned a dedicated CPU with cset
 
 ## benchmark tool
-* Rust echo bench: https://github.com/haraldh/rust_echo_bench
-* `cargo run --release -- --address "localhost:8080" --number {number of clients} --duration 30 --length {msg size}`
+* Rust echo bench: https://crates.io/crates/tcp-echo-benchmark
+* `tcp-echo-benchmark --address "localhost:8080" --number {number of clients} --duration 30 --length {msg size}`
 * 5 runs for each combination of 128 and 1024 bytes message size with 100, 500 and 1000 clients
 * [bench.sh](#benchmark script) script using for benchmarking
 
 # Results
 
-|                               | c: 100 bytes: 128 | c: 50 bytes: 1024| c: 500 bytes: 128 | c: 500 bytes: 1024| c: 1000 bytes: 128 | c: 1000 bytes: 1024|
+|                               | c: 100 bytes: 128 | c: 100 bytes: 1024| c: 500 bytes: 128 | c: 500 bytes: 1024| c: 1000 bytes: 128 | c: 1000 bytes: 1024|
 |-------------------------------|-------------------|------------------|-------------------|-------------------|--------------------|--------------------|
-| epoll echo-server             | 160869            | 154727           | 153380            | 145018            | 149071             |     143961         |
-| io_uring echo-server          | 232376            | 223385           | 220271            | 212599            | 202515             |     187121         |
-| io_uring-echo-server (C lang) | 242813            | 233604           | 220429            | 218261            | 205329             |    183582          |
+| epoll echo-server             | 267055            | 259730           | 276911            | 264069            | 274568             |     258904         |
+| io_uring echo-server          | 355931            | 310814           | 364609            | 364675            | 363552             |     303197         |
+| io_uring-echo-server (C lang) | 379458            | 361902           | 386219            | 367076            | 382633             |    284460          |
 
 
 ### benchmark script
