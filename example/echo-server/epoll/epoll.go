@@ -1,3 +1,5 @@
+//nolint
+
 package main
 
 import (
@@ -58,7 +60,7 @@ func main() {
             if events[i].Fd == int32(sockFd) {
                 connFd, _, err := unix.Accept4(sockFd, unix.SOCK_NONBLOCK)
                 if err != nil {
-                    log.Printf("Error accepting connection:", err)
+                    log.Printf("Error accepting connection: %s", err)
                     continue
                 }
 
